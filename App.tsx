@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
 import { Landing } from './pages/Landing';
@@ -11,7 +11,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ROOMS, getUser, logoutUser, saveBooking, User, Booking } from './lib/store';
 import { ThemeProvider } from './lib/theme';
-import { Toaster, toast } from 'sonner@2.0.3';
+import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -120,9 +120,9 @@ function AppContent() {
           </div>
         );
       case 'login':
-        return <div className="pt-32"><Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} /></div>;
+        return <Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} />;
       case 'signup':
-        return <div className="pt-32"><Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} /></div>;
+        return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} />;
       case 'dashboard':
         return <div className="pt-24">{user && <Dashboard user={user} />}</div>;
       case 'booking':

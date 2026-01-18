@@ -1820,6 +1820,33 @@ html {
   display: none;
 }
 
+.auth-bg-login,
+.auth-bg-signup {
+  background-size: 120% 120%;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.auth-bg-login {
+  background-color: #f9f7f2;
+  background-image: url("/login-bg-light.svg");
+}
+
+.auth-bg-signup {
+  background-color: #f9f7f2;
+  background-image: url("/signup-bg-light.svg");
+}
+
+.dark .auth-bg-login {
+  background-color: #0a2342;
+  background-image: url("/login-bg-dark.svg");
+}
+
+.dark .auth-bg-signup {
+  background-color: #0a2342;
+  background-image: url("/signup-bg-dark.svg");
+}
+
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
