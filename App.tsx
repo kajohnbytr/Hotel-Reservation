@@ -3,12 +3,13 @@ import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
 import { Landing } from './src/pages/Landing';
 import { Signup } from './src/pages/Signup';
+import { Login } from './src/pages/Login';
+import { ForgotPassword } from './src/pages/ForgotPassword';
 import { RoomCard } from './components/RoomCard';
 import { MissionVision } from './components/MissionVision';
 import { BookingPage } from './src/pages/Booking';
 import { ConfirmationPage } from './src/pages/Confirmation';
 import { Dashboard } from './src/pages/Dashboard';
-import { Login } from './src/pages/Login';
 import { ROOMS, getUser, logoutUser, saveBooking, User, Booking } from './lib/store';
 import { ThemeProvider } from './lib/theme';
 import { Toaster, toast } from 'sonner';
@@ -120,9 +121,17 @@ function AppContent() {
           </div>
         );
       case 'login':
-        return <Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} />;
+        return (
+          <Login 
+            onLogin={handleLogin} 
+            onNavigateToSignup={() => setCurrentPage('signup')}
+            onNavigateToForgotPassword={() => setCurrentPage('forgotPassword')}
+          />
+        );
       case 'signup':
         return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} />;
+      case 'forgotPassword':
+        return <ForgotPassword onNavigateToLogin={() => setCurrentPage('login')} />;
       case 'dashboard':
         return <div className="pt-24">{user && <Dashboard user={user} />}</div>;
       case 'booking':

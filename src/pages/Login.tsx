@@ -3,7 +3,15 @@ import { motion } from 'motion/react';
 import { login } from '../services/authService';
 import { Eye, EyeOff } from 'lucide-react';
 
-export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) => void, onNavigateToSignup: () => void }) {
+export function Login({ 
+  onLogin, 
+  onNavigateToSignup,
+  onNavigateToForgotPassword 
+}: { 
+  onLogin: (user: any) => void, 
+  onNavigateToSignup: () => void,
+  onNavigateToForgotPassword: () => void 
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -72,6 +80,15 @@ export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) =>
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={onNavigateToForgotPassword}
+                className="text-sm text-[#D4AF37] hover:underline font-semibold"
+              >
+                Forgot Password?
               </button>
             </div>
           </div>
