@@ -65,4 +65,8 @@ export function Landing({ rooms, onBook, onViewAllRooms }: LandingProps) {
       </div>
     </div>
   );
+<<<<<<< Updated upstream
 }
+=======
+}
+>>>>>>> Stashed changes

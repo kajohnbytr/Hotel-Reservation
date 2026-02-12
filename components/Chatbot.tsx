@@ -18,32 +18,88 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     }
   }, [messages, isOpen]);
 
+  // ================= TALK TO NLP CHATBOT =================
+  const askNLP = async (message: string) => {
+    try {
+      const res = await fetch("http://localhost:5002/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+
+      const data = await res.json();
+      return data.reply;
+    } catch {
+      return "I am currently offline. Please try again.";
+    }
+  };
+
+  // ================= EXTRACT BOOKING INFO =================
+  const extractBookingInfo = (text: string) => {
+    const numbers = text.match(/\d+/g);
+
+    let guests = 2;
+    let nights = 1;
+    let price = 2500;
+
+    if (numbers) {
+      if (numbers[0]) guests = parseInt(numbers[0]);
+      if (numbers[1]) nights = parseInt(numbers[1]);
+      if (numbers[2]) price = parseInt(numbers[2]);
+    }
+
+    return { guests, nights, price };
+  };
+
+  // ================= CALL AI RECOMMENDATION =================
+  const callAI = async (bookingInfo: any) => {
+    try {
+      const res = await fetch("http://localhost:5000/api/ai/predict", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(bookingInfo)
+      });
+
+      const data = await res.json();
+      return data.message;
+
+    } catch {
+      return "I cannot access the recommendation system right now.";
+    }
+  };
+
+  // ================= SEND MESSAGE =================
   const handleSend = async () => {
     if (!input.trim()) return;
-    
+
     const userMessage = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsTyping(true);
 
-    await wait(1200);
+    await wait(900);
 
-    let botResponse = "I can assist with room details and bookings. What would you like to know?";
+    let botResponse = "";
     const lowerInput = userMessage.toLowerCase();
 
-    if (lowerInput.includes('recommend') || lowerInput.includes('suggest')) {
-      if (lowerInput.includes('luxury') || lowerInput.includes('best')) {
-        botResponse = "For the ultimate experience, I recommend our Aurora Royal Suite. It features a private terrace and butler service.";
-        if (onRecommend) onRecommend('suite');
-      } else if (lowerInput.includes('price') || lowerInput.includes('cheap')) {
-        botResponse = "Our Serenity Standard room offers exceptional comfort at our most accessible rate.";
-        if (onRecommend) onRecommend('standard');
-      } else {
-        botResponse = "I recommend the Horizon Deluxe for a perfect balance of view and comfort.";
-        if (onRecommend) onRecommend('deluxe');
-      }
-    } else if (lowerInput.includes('price') || lowerInput.includes('cost')) {
-      botResponse = "Rates start at $150 for Standard, $280 for Deluxe, and $550 for our Royal Suite.";
+    // ===== DETECT BOOKING REQUEST =====
+    if (
+      lowerInput.includes("guest") ||
+      lowerInput.includes("people") ||
+      lowerInput.includes("person") ||
+      lowerInput.includes("night") ||
+      lowerInput.includes("budget") ||
+      lowerInput.includes("stay")
+    ) {
+      const bookingInfo = extractBookingInfo(userMessage);
+      botResponse = await callAI(bookingInfo);
+    }
+
+    // ===== NORMAL CHAT =====
+    else {
+      botResponse = await askNLP(userMessage);
     }
 
     setMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
@@ -95,6 +151,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
                   </div>
                 </div>
               ))}
+
               {isTyping && (
                 <div className="flex justify-start">
                   <div className="bg-white border border-[#0A2342]/10 p-4 rounded-t-xl rounded-br-xl">
@@ -115,7 +172,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="Type your inquiry..."
+                  placeholder="Ask about rooms, wifi, or tell your budget..."
                   className="flex-1 bg-[#F9F7F2] border border-[#0A2342]/20 rounded-lg px-4 py-3 text-[#0A2342] text-sm focus:outline-none focus:border-[#D4AF37]"
                 />
                 <button

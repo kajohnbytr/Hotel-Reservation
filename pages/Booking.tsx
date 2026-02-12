@@ -189,4 +189,8 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
       </motion.div>
     </div>
   );
+<<<<<<< Updated upstream
 }
+=======
+}
+>>>>>>> Stashed changes

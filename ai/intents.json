@@ -1,0 +1,126 @@
+{
+  "intents": [
+
+    {
+      "tag": "greeting",
+      "patterns": ["hello", "hi", "hey", "good day", "good morning", "good evening"],
+      "responses": [
+        "Hello! Welcome to Aurora Hotel. How may I assist you today?",
+        "Hi there! I’m your Aurora virtual assistant. I can help you with rooms and bookings.",
+        "Good day! Need help choosing a room or checking our amenities?",
+        "Welcome to Aurora! Tell me your budget and number of guests and I can recommend a room."
+      ]
+    },
+
+    {
+      "tag": "farewell",
+      "patterns": ["bye", "goodbye", "see you", "thanks bye"],
+      "responses": [
+        "Thank you for visiting Aurora Hotel. Have a wonderful day!",
+        "Goodbye! We hope to see you soon.",
+        "Have a pleasant day and enjoy your stay!"
+      ]
+    },
+
+    {
+      "tag": "wifi",
+      "patterns": ["wifi", "internet", "do you have wifi", "is there internet"],
+      "responses": [
+        "Yes! We provide free high-speed WiFi in all rooms and public areas.",
+        "Of course! Complimentary WiFi is available throughout the hotel.",
+        "You can connect to our fast internet anywhere inside the hotel."
+      ]
+    },
+
+    {
+      "tag": "checkin",
+      "patterns": ["check in time", "arrival time", "when can i check in"],
+      "responses": [
+        "Check-in time is 2:00 PM. Early check-in depends on availability.",
+        "Guests may check in starting 2:00 PM.",
+        "You may arrive after 2:00 PM. Early check-in can be requested at the front desk."
+      ]
+    },
+
+    {
+      "tag": "checkout",
+      "patterns": ["check out time", "departure time", "when to leave"],
+      "responses": [
+        "Check-out time is 12:00 PM noon.",
+        "Guests should check out before 12:00 PM.",
+        "Late checkout may be requested depending on room availability."
+      ]
+    },
+
+    {
+      "tag": "amenities",
+      "patterns": ["amenities", "facilities", "what do you offer", "services available"],
+      "responses": [
+        "We offer a swimming pool, fitness gym, restaurant, parking, and 24/7 front desk.",
+        "Aurora Hotel includes pool access, gym, restaurant, and free parking.",
+        "Our hotel features leisure facilities including a pool and dining restaurant."
+      ]
+    },
+
+    {
+      "tag": "restaurant",
+      "patterns": ["restaurant", "food", "dining", "breakfast"],
+      "responses": [
+        "Our restaurant serves breakfast, lunch, and dinner daily.",
+        "Buffet breakfast is available from 6:00 AM to 10:00 AM.",
+        "We offer both local and international cuisine at the Aurora Restaurant."
+      ]
+    },
+
+    {
+      "tag": "pool",
+      "patterns": ["pool", "swimming", "swimming pool"],
+      "responses": [
+        "Our swimming pool is open from 7 AM to 9 PM.",
+        "Guests can freely access the pool area during operating hours.",
+        "Yes! The pool is available daily for all registered guests."
+      ]
+    },
+
+    {
+      "tag": "parking",
+      "patterns": ["parking", "car park", "parking available"],
+      "responses": [
+        "Free parking is available for all guests.",
+        "We provide complimentary parking inside the hotel premises.",
+        "Yes, you may safely park your vehicle during your stay."
+      ]
+    },
+
+    {
+      "tag": "room_types",
+      "patterns": ["what rooms", "room types", "available rooms"],
+      "responses": [
+        "We have Standard, Deluxe, and Family Rooms.",
+        "Aurora offers three room categories: Standard, Deluxe, and Family Suite.",
+        "You may choose between Standard Room, Deluxe Room, and Family Room."
+      ]
+    },
+
+    {
+      "tag": "booking_help",
+      "patterns": ["how to book", "book room", "reservation"],
+      "responses": [
+        "You can book a room through our website reservation form.",
+        "Simply choose a room and date, then confirm your reservation online.",
+        "I can help you choose the best room. Tell me your budget and number of guests."
+      ]
+    },
+
+    {
+      "tag": "unknown",
+      "patterns": [],
+      "responses": [
+        "I can help you with bookings, rooms, amenities, and recommendations.",
+        "Try asking about check-in time, wifi, or tell me your budget and number of guests.",
+        "You may ask me anything about staying at Aurora Hotel."
+      ]
+    }
+
+  ]
+}
