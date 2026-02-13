@@ -63,8 +63,4 @@ export function ConfirmationPage({ booking, onDashboard }: ConfirmationPageProps
       </motion.div>
     </div>
   );
-<<<<<<< Updated upstream
 }
-=======
-}
->>>>>>> Stashed changes

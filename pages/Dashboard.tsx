@@ -67,8 +67,4 @@ export function Dashboard({ user }: { user: User }) {
       </div>
     </div>
   );
-<<<<<<< Updated upstream
 }
-=======
-}
->>>>>>> Stashed changes

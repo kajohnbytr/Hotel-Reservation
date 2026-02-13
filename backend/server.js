@@ -1,7 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';  
-import axios from 'axios'; // ← ADD THIS
 import authRoutes from './routes/auth.js';
 import { connectDB } from './config/db.js';
 
@@ -11,7 +10,7 @@ const PORT = process.env.PORT || 5000;
 
 const app = express();
 
-// CORS
+//Add CORS before other middleware
 app.use(cors({
   origin: 'http://localhost:5173',
   credentials: true
@@ -19,26 +18,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// Existing routes
 app.use("/api/users", authRoutes);
-
-
-// ================= AI PREDICTION ROUTE =================
-app.post("/api/ai/predict", async (req, res) => {
-  try {
-    const response = await axios.post(
-      "http://127.0.0.1:5001/predict",
-      req.body
-    );
-
-    res.json(response.data);
-
-  } catch (error) {
-    console.log("AI ERROR:", error.message);
-    res.status(500).json({ message: "AI server not responding" });
-  }
-});
-
 
 connectDB();
 

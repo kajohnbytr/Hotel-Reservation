@@ -254,8 +254,4 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
       )}
     </div>
   );
-<<<<<<< Updated upstream
 }
-=======
-}
->>>>>>> Stashed changes

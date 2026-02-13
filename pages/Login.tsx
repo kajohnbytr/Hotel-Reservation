@@ -91,8 +91,4 @@ export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) =>
       </motion.div>
     </div>
   );
-<<<<<<< Updated upstream
 }
-=======
-}
->>>>>>> Stashed changes
