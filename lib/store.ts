@@ -127,4 +127,5 @@ export const registerUser = (email: string, name: string) => {
 
 export const logoutUser = () => {
   localStorage.removeItem('aurora_user');
+  localStorage.removeItem('aurora_token');
 };

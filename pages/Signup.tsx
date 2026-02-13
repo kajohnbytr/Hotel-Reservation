@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { registerUser } from '../lib/store';
 import { Eye, EyeOff } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) => void, onNavigateToLogin: () => void }) {
   const [firstName, setFirstName] = useState('');
@@ -13,6 +14,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
   const [isLoading, setIsLoading] = useState(false);
   const [showTermsError, setShowTermsError] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!isTermsOpen) return;
@@ -31,13 +33,35 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
       setShowTermsError(true);
       return;
     }
+    setError('');
     setIsLoading(true);
-    setTimeout(() => {
-      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-      const user = registerUser(email, fullName);
+    try {
+      const res = await fetch(`${API_BASE}/api/users/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+          password,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || 'Registration failed. Try again.');
+        setIsLoading(false);
+        return;
+      }
+      const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || email.split('@')[0];
+      const user = { id: String(data._id), email: data.email, name };
+      localStorage.setItem('aurora_user', JSON.stringify(user));
+      if (data.token) localStorage.setItem('aurora_token', data.token);
       onSignup(user);
+    } catch {
+      setError('Registration failed. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -86,7 +110,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setError(''); }}
               placeholder="you@gmail.com"
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
             />
@@ -142,6 +166,11 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
           {showTermsError && (
             <p className="text-xs text-[#D4AF37]">
               Please accept the terms to continue.
+            </p>
+          )}
+          {error && (
+            <p className="text-red-600 dark:text-red-400 text-sm text-center font-medium" role="alert">
+              {error}
             </p>
           )}
 

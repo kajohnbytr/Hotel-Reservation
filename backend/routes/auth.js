@@ -78,6 +78,7 @@ router.post('/forgot-password', async (req, res) => {
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log('[Password Reset OTP]', { email: user.email, otp });
         
         // Hash OTP and save to user
         user.resetPasswordOTP = crypto.createHash('sha256').update(otp).digest('hex');
