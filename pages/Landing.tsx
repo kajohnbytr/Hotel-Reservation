@@ -107,6 +107,36 @@ export function Landing({ rooms, onBook, onViewAllRooms, onNavigateToStaffLogin,
         </div>
       </div>
 
+      {/* User Dashboard Section */}
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">Guest Dashboard</h2>
+          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 max-w-2xl mx-auto leading-relaxed">
+            Track your reservations, manage bookings, and access your guest information all in one place.
+          </p>
+        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="bg-white dark:bg-[#0A2342] border border-[#D4AF37]/30 rounded-lg p-12 shadow-lg hover:shadow-xl transition-shadow cursor-pointer max-w-md mx-auto"
+          onClick={() => onNavigateToReception?.()}
+        >
+          <div className="text-center">
+            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">📊</span>
+            </div>
+            <h3 className="text-2xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-3">Your Dashboard</h3>
+            <p className="text-[#0A2342]/70 dark:text-[#F9F7F2]/70 text-sm mb-6">
+              View your bookings, check reservation details, and manage your account.
+            </p>
+            <button className="px-8 py-2 bg-[#0A2342] text-[#F9F7F2] hover:bg-[#D4AF37] hover:text-[#0A2342] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg">
+              Access Dashboard
+            </button>
+          </div>
+        </motion.div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24 bg-[#F9F7F2] dark:bg-[#0A2342] transition-colors duration-300">
         <div className="text-center mb-16">
           <h2 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">The Experience</h2>
