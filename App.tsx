@@ -4,6 +4,8 @@ import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
 import { Landing } from './pages/Landing';
 import { Signup } from './pages/Signup';
+import StaffLogin from './pages/staff login page';
+import ReceptionDesk from './pages/ReceptionDesk';
 import { RoomCard } from './components/RoomCard';
 import { MissionVision } from './components/MissionVision';
 import { BookingPage } from './pages/Booking';
@@ -131,7 +133,11 @@ function AppContent() {
       case 'login':
         return <Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} />;
       case 'signup':
-        return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} />;
+        return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} onNavigateToStaffLogin={() => setCurrentPage('staff-login')} />;
+      case 'staff-login':
+        return <StaffLogin onLogin={handleLogin} />;
+      case 'reception':
+        return <ReceptionDesk />;
       case 'dashboard':
         return <div className="pt-24">{user && <Dashboard user={user} />}</div>;
       case 'booking':
