@@ -103,7 +103,9 @@ function AppContent() {
           <Landing 
             rooms={ROOMS} 
             onBook={handleBook} 
-            onViewAllRooms={() => setCurrentPage('rooms')} 
+            onViewAllRooms={() => setCurrentPage('rooms')}
+            onNavigateToStaffLogin={() => setCurrentPage('staff-login')}
+            onNavigateToReception={() => setCurrentPage('reception')}
           />
         );
       case 'rooms':

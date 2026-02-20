@@ -9,9 +9,11 @@ interface LandingProps {
   rooms: Room[];
   onBook: (roomId: string) => void;
   onViewAllRooms: () => void;
+  onNavigateToStaffLogin?: () => void;
+  onNavigateToReception?: () => void;
 }
 
-export function Landing({ rooms, onBook, onViewAllRooms }: LandingProps) {
+export function Landing({ rooms, onBook, onViewAllRooms, onNavigateToStaffLogin, onNavigateToReception }: LandingProps) {
   return (
     <div className="pb-20">
       <div className="relative h-[85vh] flex items-center justify-center overflow-hidden">
@@ -49,6 +51,61 @@ export function Landing({ rooms, onBook, onViewAllRooms }: LandingProps) {
 
       <MissionVision />
       <Highlights />
+
+      {/* Staff Portal Section */}
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24 bg-gradient-to-r from-[#0A2342] to-[#153a66] dark:from-[#05152a] dark:to-[#0A2342]">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-serif text-[#F9F7F2] mb-4">Staff Portal</h2>
+          <p className="text-[#F9F7F2]/70 max-w-2xl mx-auto leading-relaxed">
+            Access the administration panel to manage reservations, check room availability, and oversee guest operations.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-8">
+          {/* Staff Login Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#D4AF37]/30 rounded-lg p-8 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+            onClick={() => onNavigateToStaffLogin?.()}
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-[#D4AF37]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">🔐</span>
+              </div>
+              <h3 className="text-2xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-3">Staff Portal</h3>
+              <p className="text-[#0A2342]/70 dark:text-[#F9F7F2]/70 text-sm mb-6">
+                Sign in to your staff account to access the management dashboard.
+              </p>
+              <button className="px-8 py-2 bg-[#0A2342] text-[#F9F7F2] hover:bg-[#D4AF37] hover:text-[#0A2342] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg">
+                Staff Login
+              </button>
+            </div>
+          </motion.div>
+
+          {/* Reception Desk Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#D4AF37]/30 rounded-lg p-8 shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+            onClick={() => onNavigateToReception?.()}
+          >
+            <div className="text-center">
+              <div className="w-16 h-16 bg-[#D4AF37]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">📋</span>
+              </div>
+              <h3 className="text-2xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-3">Reception Desk</h3>
+              <p className="text-[#0A2342]/70 dark:text-[#F9F7F2]/70 text-sm mb-6">
+                View reservations and manage room availability (requires login).
+              </p>
+              <button className="px-8 py-2 bg-[#0A2342] text-[#F9F7F2] hover:bg-[#D4AF37] hover:text-[#0A2342] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg">
+                Open Reception
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24 bg-[#F9F7F2] dark:bg-[#0A2342] transition-colors duration-300">
         <div className="text-center mb-16">
