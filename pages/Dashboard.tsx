@@ -2,23 +2,41 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { ROOMS, getBookings, User } from '../lib/store';
 import { formatDate } from '../lib/utils';
-import { Shield } from 'lucide-react';
+import { Shield, BarChart3 } from 'lucide-react';
 
-export function Dashboard({ user }: { user: User }) {
+export function Dashboard({ user, onNavigateToReception }: { user: User; onNavigateToReception?: () => void }) {
   const allBookings = getBookings();
   const userBookings = allBookings.filter(b => b.userId === user.id).reverse();
 
   return (
-    <div className="max-w-4xl mx-auto py-16 px-6">
+    <div className="bg-[#F9F7F2] dark:bg-[#0A2342] min-h-screen">
+      <div className="max-w-4xl mx-auto py-16 px-6">
       <div className="mb-12">
-        <h1 className="text-4xl font-serif text-[#0A2342] mb-2">Welcome, {user.name}</h1>
-        <p className="text-[#0A2342]/60 uppercase tracking-widest text-xs">Your Journey History</p>
+        <h1 className="text-4xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Welcome, {user.name}</h1>
+        <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest text-xs">Your Journey History</p>
       </div>
+
+      {/* Reception Desk Quick Access */}
+      {onNavigateToReception && (
+        <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={onNavigateToReception}
+          className="w-full mb-8 bg-gradient-to-r from-[#0A2342] to-[#153a66] dark:from-[#05152a] dark:to-[#0A2342] text-[#F9F7F2] p-6 rounded-lg hover:shadow-lg transition-shadow flex items-center gap-4"
+        >
+          <BarChart3 className="w-6 h-6 text-[#D4AF37]" />
+          <div className="text-left flex-1">
+            <h3 className="font-serif text-lg">Reception Desk</h3>
+            <p className="text-sm text-[#F9F7F2]/70">Manage reservations & room availability</p>
+          </div>
+          <span className="text-[#D4AF37] text-xl">→</span>
+        </motion.button>
+      )}
 
       <div className="space-y-8">
         {userBookings.length === 0 ? (
-          <div className="bg-white border border-[#0A2342]/10 p-12 text-center">
-            <p className="text-[#0A2342]/60 mb-6 font-serif text-lg">You have no upcoming stays.</p>
+          <div className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 p-12 text-center">
+            <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mb-6 font-serif text-lg">You have no upcoming stays.</p>
           </div>
         ) : (
           userBookings.map((booking) => {
@@ -64,6 +82,7 @@ export function Dashboard({ user }: { user: User }) {
             );
           })
         )}
+      </div>
       </div>
     </div>
   );

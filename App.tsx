@@ -141,7 +141,7 @@ function AppContent() {
       case 'reception':
         return <ReceptionDesk />;
       case 'dashboard':
-        return <div className="pt-24">{user && <Dashboard user={user} />}</div>;
+        return <div className="pt-24">{user && <Dashboard user={user} onNavigateToReception={() => setCurrentPage('reception')} />}</div>;
       case 'booking':
         const room = ROOMS.find(r => r.id === selectedRoomId);
         return <div className="pt-24">{room && <BookingPage room={room} onConfirm={handleBookingConfirm} onCancel={() => setCurrentPage('rooms')} />}</div>;
