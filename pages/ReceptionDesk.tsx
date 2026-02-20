@@ -245,17 +245,17 @@ export function ReceptionDesk() {
                 {roomStatuses.map((room) => (
                   <div
                     key={room.roomId}
-                    className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg p-4 flex items-center justify-between hover:shadow-lg transition-shadow"
+                    className="bg-[#E8F5F0] dark:bg-[#0A2342]/50 border border-green-200 dark:border-green-900/30 rounded-lg p-4 flex items-center justify-between hover:shadow-lg transition-shadow"
                   >
                     {/* Room Image and Info */}
                     <div className="flex items-center gap-4 flex-1">
                       <img
                         src={room.image}
                         alt={room.name}
-                        className="w-16 h-16 rounded-lg object-cover"
+                        className="w-20 h-20 rounded-lg object-cover"
                       />
                       <div>
-                        <h4 className="font-serif text-[#0A2342] dark:text-[#F9F7F2] font-semibold">
+                        <h4 className="font-serif text-[#0A2342] dark:text-[#F9F7F2] font-semibold text-lg">
                           {room.name}
                         </h4>
                         <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest">
@@ -265,11 +265,16 @@ export function ReceptionDesk() {
                     </div>
 
                     {/* Status Badge */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-green-600 dark:text-green-400">
-                        Available
-                      </span>
-                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                          Available
+                        </span>
+                        <span className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                          Ready for check-in
+                        </span>
+                      </div>
+                      <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
                     </div>
                   </div>
                 ))}
