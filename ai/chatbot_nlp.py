@@ -20,15 +20,39 @@ conversation_memory = {
     "budget": None
 }
 
-# NORMAL CHAT RESPONSE
+# Avoid repeating the same response twice in a row
+last_basic_response = None
+
+def deduplicate_words(text):
+    """Remove consecutive repeated words (e.g. 'the the' -> 'the')."""
+    if not text or not isinstance(text, str):
+        return text
+    words = text.split()
+    result = []
+    for w in words:
+        if not result or w.lower() != result[-1].lower():
+            result.append(w)
+    return " ".join(result)
+
+# NORMAL CHAT RESPONSE (avoid same reply twice in a row)
 def get_basic_response(user_message):
+    global last_basic_response
     user_message = user_message.lower()
 
     for intent in data["intents"]:
         for pattern in intent["patterns"]:
             if pattern in user_message:
-                return random.choice(intent["responses"])
+                responses = intent["responses"]
+                # Prefer a response different from last time
+                if len(responses) > 1 and last_basic_response in responses:
+                    choices = [r for r in responses if r != last_basic_response]
+                    reply = random.choice(choices) if choices else random.choice(responses)
+                else:
+                    reply = random.choice(responses)
+                last_basic_response = reply
+                return deduplicate_words(reply)
 
+    last_basic_response = None
     return None
 
 # EXTRACT BOOKING INFO 
@@ -79,28 +103,29 @@ def get_recommendation():
 def chat():
     message = request.json["message"]
 
+    def clean_reply(r):
+        return deduplicate_words(r) if r else r
+
     # 1. try extracting booking details
     detail_response = extract_details(message)
     if detail_response:
-        return jsonify({"reply": detail_response})
+        return jsonify({"reply": clean_reply(detail_response)})
 
     # 2. if enough info → recommend
     if ready_for_prediction():
         recommendation = get_recommendation()
-
-        # reset memory after recommendation
         conversation_memory["guests"] = None
         conversation_memory["nights"] = None
         conversation_memory["budget"] = None
-
-        return jsonify({"reply": recommendation})
+        return jsonify({"reply": clean_reply(recommendation)})
 
     # 3. normal conversation
     basic = get_basic_response(message)
     if basic:
         return jsonify({"reply": basic})
 
-    return jsonify({"reply": "You can tell me your number of guests and budget so I can recommend a room."})
+    fallback = "You can tell me your number of guests and budget so I can recommend a room."
+    return jsonify({"reply": clean_reply(fallback)})
 
 if __name__ == "__main__":
     app.run(port=5002)

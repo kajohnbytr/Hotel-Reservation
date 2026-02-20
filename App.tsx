@@ -33,10 +33,9 @@ function AppContent() {
     toast.success('Welcome back.');
   };
 
-  const handleSignup = (newUser: User) => {
-    setUser(newUser);
-    setCurrentPage('home');
-    toast.success('Account created successfully.');
+  const handleSignup = () => {
+    setCurrentPage('login');
+    toast.success('Account created. Please sign in.');
   };
 
   const handleLogoutConfirm = () => {

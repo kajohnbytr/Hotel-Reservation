@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true,
+        minLength: 8,
     },
     resetPasswordOTP: String,
     resetPasswordExpire: Date,

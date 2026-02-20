@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Eye, EyeOff } from 'lucide-react';
+import { validatePassword } from '../lib/passwordPolicy';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) => void, onNavigateToLogin: () => void }) {
+export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; onNavigateToLogin: () => void }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,10 +28,25 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isTermsOpen]);
 
+  const nameHasNumbers = (s: string) => /\d/.test(s);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptedTerms) {
       setShowTermsError(true);
+      return;
+    }
+    if (nameHasNumbers(firstName.trim())) {
+      setError('First name cannot contain numbers.');
+      return;
+    }
+    if (nameHasNumbers(lastName.trim())) {
+      setError('Last name cannot contain numbers.');
+      return;
+    }
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      setError(pwCheck.message || 'Password does not meet requirements.');
       return;
     }
     setError('');
@@ -52,11 +68,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
         setIsLoading(false);
         return;
       }
-      const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || email.split('@')[0];
-      const user = { id: String(data._id), email: data.email, name };
-      localStorage.setItem('aurora_user', JSON.stringify(user));
-      if (data.token) localStorage.setItem('aurora_token', data.token);
-      onSignup(user);
+      onSignup();
     } catch {
       setError('Registration failed. Please try again.');
     } finally {
@@ -87,8 +99,10 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
                 type="text"
                 required
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => setFirstName(e.target.value.replace(/\d/g, ''))}
                 placeholder="First name"
+                pattern="[A-Za-z\s\-']+"
+                title="Letters only (no numbers)"
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
             </div>
@@ -98,8 +112,10 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
                 type="text"
                 required
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => setLastName(e.target.value.replace(/\d/g, ''))}
                 placeholder="Last name"
+                pattern="[A-Za-z\s\-']+"
+                title="Letters only (no numbers)"
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
             </div>
@@ -117,24 +133,32 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: (user: any) 
           </div>
           <div>
             <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Password</label>
-            <div className="relative">
+            <div className="relative" style={{ position: 'relative' }}>
               <input
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a password"
-                className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-14 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
+                minLength={8}
+                className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
               <button
                 type="button"
+                tabIndex={0}
                 onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-[#0A2342]/50 dark:text-[#F9F7F2]/60 hover:text-[#D4AF37] transition-colors"
+                style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '2.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+                className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#D4AF37]/50 transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {showPassword ? <EyeOff className="w-5 h-5 shrink-0" /> : <Eye className="w-5 h-5 shrink-0" />}
               </button>
             </div>
+            {password.length > 0 && !validatePassword(password).valid && (
+              <p className="mt-1.5 text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                At least 8 characters, with uppercase, lowercase, a number, and a special character.
+              </p>
+            )}
           </div>
 
           <div className="flex items-start gap-3 text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/70">

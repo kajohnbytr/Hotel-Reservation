@@ -1,10 +1,14 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.js';
+import aiRoutes from './routes/ai.js';
 import { connectDB } from './config/db.js';
+import { sanitizeNoSql } from './middleware/sanitizeNoSql.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,18 +19,36 @@ const PORT = process.env.PORT || 5000;
 
 const app = express();
 
-//Add CORS before other middleware
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-app.use(express.json());
+// CORS before other middleware
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+}));
 
-app.use("/api/users", authRoutes);
+// Global rate limit (per IP)
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,
+  message: { message: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+app.use(express.json({ limit: '10kb' }));
+
+// NoSQL injection protection: strip $ and dotted keys from body/query
+app.use(sanitizeNoSql);
+
+app.use('/api/users', authRoutes);
+app.use('/api/ai', aiRoutes);
 
 connectDB();
 
-app.listen(PORT , () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });

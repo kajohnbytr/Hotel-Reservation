@@ -55,7 +55,7 @@ export function HotelCard({ hotel, onClick }: HotelCardProps) {
           <div className="flex flex-col">
             <span className="text-slate-400 text-xs">Price per night</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold text-white">${hotel.price}</span>
+              <span className="text-xl font-bold text-white">₱{hotel.price}</span>
             </div>
           </div>
           <button className="bg-slate-700 hover:bg-teal-500 hover:text-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">

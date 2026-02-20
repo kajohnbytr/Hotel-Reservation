@@ -3,6 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
 import { wait } from '../lib/utils';
 
+/** Removes consecutive repeated words so the bot doesn't say "the the" or "room room". */
+function deduplicateRepeatedWords(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((word, i, arr) => i === 0 || word.toLowerCase() !== arr[i - 1]?.toLowerCase())
+    .join(' ');
+}
+
 export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([
@@ -18,17 +29,19 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     }
   }, [messages, isOpen]);
 
-  // ================= TALK TO NLP CHATBOT =================
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  // ================= TALK TO NLP CHATBOT (via backend) =================
   const askNLP = async (message: string) => {
     try {
-      const res = await fetch("http://localhost:5002/chat", {
+      const res = await fetch(`${API_BASE}/api/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message })
       });
 
       const data = await res.json();
-      return data.reply;
+      return data.reply ?? "I am currently offline. Please try again.";
     } catch {
       return "I am currently offline. Please try again.";
     }
@@ -51,20 +64,17 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     return { guests, nights, price };
   };
 
-  // ================= CALL AI RECOMMENDATION =================
+  // ================= CALL AI RECOMMENDATION (via backend) =================
   const callAI = async (bookingInfo: any) => {
     try {
-      const res = await fetch("http://localhost:5000/api/ai/predict", {
+      const res = await fetch(`${API_BASE}/api/ai/predict`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bookingInfo)
       });
 
       const data = await res.json();
-      return data.message;
-
+      return data.message ?? "I cannot access the recommendation system right now.";
     } catch {
       return "I cannot access the recommendation system right now.";
     }
@@ -102,6 +112,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
       botResponse = await askNLP(userMessage);
     }
 
+    botResponse = deduplicateRepeatedWords(botResponse);
     setMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
     setIsTyping(false);
   };

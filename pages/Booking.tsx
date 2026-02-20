@@ -70,7 +70,7 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
           <form onSubmit={handleBook} className="space-y-8">
             <div className="bg-[#F9F7F2] p-6 border border-[#0A2342]/5">
               <h3 className="text-[#D4AF37] font-serif text-xl mb-1">{room.name}</h3>
-              <p className="text-[#0A2342]/60 text-sm mb-4">Total for {nights} night(s): <span className="text-[#0A2342] font-bold">${room.price * nights}</span></p>
+              <p className="text-[#0A2342]/60 text-sm mb-4">Total for {nights} night(s): <span className="text-[#0A2342] font-bold">₱{room.price * nights}</span></p>
             </div>
 
             <div className="grid grid-cols-2 gap-6">

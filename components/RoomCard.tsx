@@ -36,7 +36,7 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
           />
         </button>
         <div className="absolute top-4 right-4 z-10 bg-[#D4AF37] text-[#0A2342] px-3 py-1 text-sm font-bold tracking-wider uppercase">
-          ${room.price} / Night
+          ₱{room.price} / Night
         </div>
       </div>
       
@@ -174,7 +174,7 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                     <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 font-semibold">
                       Price per night
                     </p>
-                    <p className="text-2xl font-semibold text-[#D4AF37]">${room.price}</p>
+                    <p className="text-2xl font-semibold text-[#D4AF37]">₱{room.price}</p>
                   </div>
                   <button
                     type="button"

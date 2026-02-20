@@ -43,7 +43,7 @@ export function Dashboard({ user }: { user: User }) {
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-xl font-serif text-[#D4AF37]">{room?.name}</h3>
-                      <span className="text-sm font-bold text-[#F9F7F2]">${booking.totalPrice}</span>
+                      <span className="text-sm font-bold text-[#F9F7F2]">₱{booking.totalPrice}</span>
                     </div>
                     <p className="text-sm text-[#F9F7F2]/60 uppercase tracking-wider mb-6">
                       {formatDate(booking.date)} • {booking.nights} Night(s)

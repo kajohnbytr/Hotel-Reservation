@@ -41,7 +41,7 @@ export function ConfirmationPage({ booking, onDashboard }: ConfirmationPageProps
             <div className="text-right">{formatDate(booking.date)}</div>
             
             <div className="text-[#F9F7F2]/60">Total</div>
-            <div className="text-right text-[#D4AF37] text-lg font-serif">${booking.totalPrice}</div>
+            <div className="text-right text-[#D4AF37] text-lg font-serif">₱{booking.totalPrice}</div>
           </div>
         </div>
 

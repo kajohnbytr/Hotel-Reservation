@@ -98,7 +98,7 @@ export function HotelDetails({ hotel, onClose, user, onLoginRequest, onBookingCo
                     <span className="text-slate-500 text-sm">(124 reviews)</span>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-teal-400">${hotel.price}</div>
+                    <div className="text-2xl font-bold text-teal-400">₱{hotel.price}</div>
                     <div className="text-slate-500 text-xs">per night</div>
                   </div>
                 </div>
@@ -125,7 +125,7 @@ export function HotelDetails({ hotel, onClose, user, onLoginRequest, onBookingCo
                   <>
                     <div className="flex justify-between items-center mb-4">
                       <span className="text-slate-300 text-sm">Total (1 night)</span>
-                      <span className="text-white font-bold">${hotel.price}</span>
+                      <span className="text-white font-bold">₱{hotel.price}</span>
                     </div>
                     <button 
                       onClick={handleBook}

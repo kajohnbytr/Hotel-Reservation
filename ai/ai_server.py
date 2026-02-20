@@ -47,16 +47,16 @@ def predict():
     prediction = model.predict([[guests, nights, room_type, price]])
     rating = round(float(prediction[0]),2)
 
-    # final chatbot response
+    # final chatbot response (no repeated words)
     message = f"""
 I recommend the {room['name']}.
 
-Reason:
-• Good for {guests} guest(s)
-• Fits your budget of ₱{budget}
-• Estimated nightly price: ₱{price}
+Why:
+• Fits {guests} guest(s)
+• Within your budget of ₱{budget}
+• Nightly rate: ₱{price}
 
-Predicted guest satisfaction: {rating} ⭐
+Predicted satisfaction: {rating} ⭐
 """
 
     return jsonify({

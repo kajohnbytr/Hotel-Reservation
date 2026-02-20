@@ -1,93 +1,124 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import User from '../models/user.js';
 import { protect } from '../middleware/auth.js';
+import {
+  registerValidation,
+  loginValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+} from '../middleware/validate.js';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 
 const router = express.Router();
 
-//Registration Route
-router.post('/register', async (req, res) => {
+// Stricter rate limit for auth endpoints (brute force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window per IP
+  message: { message: 'Too many login attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const ACCESS_TOKEN_EXPIRY = '5 seconds';   // Short-lived access token
+const REFRESH_TOKEN_EXPIRY = '5 seconds'; // Refresh token for renewal
+
+// Registration
+router.post('/register', authLimiter, registerValidation, async (req, res) => {
+  try {
     const { firstName, lastName, email, password } = req.body;
-    try {
-        if(!firstName || !lastName || !email || !password) {
-            return res.status(400).json({ message: 'Please fill all fields' })
-        }
-
-        const userExists = await User.findOne({ email });
-        if(userExists) {
-            return res
-            .status(400)
-            .json({ message: 'User already exists' })
-        }
-
-        const user = await User.create({ firstName, lastName, email, password });
-        const token = generateToken(user._id);
-        res.status(201).json({
-            _id: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            token,
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server Error' });
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
     }
-})
+    const user = await User.create({ firstName, lastName, email, password });
+    const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
+    const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
+    res.status(201).json({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      token,
+      refreshToken,
+      expiresIn: 3600, // seconds for frontend
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
 
-//Login Route
-router.post('/login', async (req, res) => {
+// Login
+router.post('/login', authLimiter, loginValidation, async (req, res) => {
+  try {
     const { email, password } = req.body;
-    try {
-        if(!email || !password) {
-            return res
-            .status(400)
-            .json({ message: 'Please fill all fields' })
-        }
-        const user = await User.findOne({ email });
-
-        if(!user || !(await user.matchPassword(password))) {
-            return res
-            .status(401)
-            .json({ message: 'Invalid email or password' });
-        }
-        const token = generateToken(user._id);
-        res.status(200).json({
-            _id: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            token,
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server Error' });
+    const user = await User.findOne({ email });
+    if (!user || !(await user.matchPassword(password))) {
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
-})
+    const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
+    const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
+    res.status(200).json({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      token,
+      refreshToken,
+      expiresIn: 3600,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
 
-//Forgot Password - Send OTP
-router.post('/forgot-password', async (req, res) => {
-    const { email } = req.body;
-    
-    try {
-        const user = await User.findOne({ email });
-        
-        if (!user) {
-            return res.status(404).json({ message: 'No account with that email exists' });
-        }
+// Refresh token (short-lived + refresh)
+router.post('/refresh', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const refreshToken = req.body?.refreshToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Refresh token required' });
+    }
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+    const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
+    res.status(200).json({
+      token,
+      expiresIn: 3600,
+    });
+  } catch (error) {
+    return res.status(401).json({ message: 'Not authorized, token failed' });
+  }
+});
 
-        // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        console.log('[Password Reset OTP]', { email: user.email, otp });
-        
-        // Hash OTP and save to user
-        user.resetPasswordOTP = crypto.createHash('sha256').update(otp).digest('hex');
-        user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
-        
-        await user.save();
+// For dev/testing: when email is fake or SMTP not configured, return OTP in response so user can still submit it
+const isDevOtpAllowed = () =>
+  process.env.NODE_ENV === 'development' || process.env.DEV_OTP_IN_RESPONSE === 'true';
 
-        // Send email
-        const html = `
+// Forgot password
+router.post('/forgot-password', authLimiter, forgotPasswordValidation, async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'No account with that email exists' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log('[Password Reset OTP]', { email: user.email, otp });
+
+    user.resetPasswordOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    const html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                 <div style="background: linear-gradient(135deg, #0A2342 0%, #153a66 100%); padding: 30px; text-align: center;">
                     <h1 style="color: #D4AF37; margin: 0; font-size: 28px;">Aurora Hotel</h1>
@@ -123,70 +154,70 @@ router.post('/forgot-password', async (req, res) => {
             </div>
         `;
 
-        await sendEmail({
-            email: user.email,
-            subject: 'Password Reset OTP - Aurora Hotel',
-            html,
-        });
-
-        res.status(200).json({ 
-            message: 'OTP sent to your email',
-            email: user.email 
-        });
-    } catch (error) {
-        console.error('Forgot password error:', error);
-        user.resetPasswordOTP = undefined;
-        user.resetPasswordExpire = undefined;
-        await user.save();
-        
-        res.status(500).json({ message: 'Email could not be sent' });
-    }
-});
-
-//Verify OTP and Reset Password
-router.post('/reset-password', async (req, res) => {
-    const { email, otp, newPassword } = req.body;
-    
+    let emailSent = false;
     try {
-        if (!email || !otp || !newPassword) {
-            return res.status(400).json({ message: 'Please provide email, OTP, and new password' });
-        }
-
-        // Hash the provided OTP to compare with stored hash
-        const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
-        
-        const user = await User.findOne({
-            email,
-            resetPasswordOTP: hashedOTP,
-            resetPasswordExpire: { $gt: Date.now() }
-        });
-
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired OTP' });
-        }
-
-        // Update password
-        user.password = newPassword;
-        user.resetPasswordOTP = undefined;
-        user.resetPasswordExpire = undefined;
-        await user.save();
-
-        res.status(200).json({ message: 'Password reset successful' });
-    } catch (error) {
-        console.error('Reset password error:', error);
-        res.status(500).json({ message: 'Server Error' });
+      await sendEmail({
+        email: user.email,
+        subject: 'Password Reset OTP - Aurora Hotel',
+        html,
+      });
+      emailSent = true;
+    } catch (sendError) {
+      console.error('Forgot password email error:', sendError.message);
+      if (!isDevOtpAllowed()) {
+        return res.status(500).json({ message: 'Email could not be sent' });
+      }
+      // In dev: still return success and include OTP so fake/non-working emails can be tested
     }
+
+    const payload = {
+      message: emailSent ? 'OTP sent to your email' : 'OTP generated. Use the code below (email not sent).',
+      email: user.email,
+    };
+    if (isDevOtpAllowed()) {
+      payload.otpForDev = otp;
+    }
+    res.status(200).json(payload);
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Email could not be sent' });
+  }
 });
 
-//Me
-router.get("/me", protect, async (req, res) => {
-    res.status(200).json(req.user)
-})
+// Reset password
+router.post('/reset-password', authLimiter, resetPasswordValidation, async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  try {
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    const user = await User.findOne({
+      email,
+      resetPasswordOTP: hashedOTP,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
 
-//Generate Token
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '30d',})
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    user.password = newPassword;
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    res.status(200).json({ message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Current user (protected)
+router.get('/me', protect, async (req, res) => {
+  res.status(200).json(req.user);
+});
+
+function generateToken(id, expiresIn = ACCESS_TOKEN_EXPIRY) {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn });
 }
 
 export default router;
