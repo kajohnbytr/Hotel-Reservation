@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing';
 import { Signup } from './pages/Signup';
 import StaffLogin from './pages/staff login page';
 import ReceptionDesk from './pages/ReceptionDesk';
+import StaffDashboard from './pages/StaffDashboard';
 import { RoomCard } from './components/RoomCard';
 import { MissionVision } from './components/MissionVision';
 import { BookingPage } from './pages/Booking';
@@ -31,8 +32,14 @@ function AppContent() {
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
-    setCurrentPage('home');
-    toast.success('Welcome back.');
+    // If logging in from staff page, go to staff dashboard
+    if (currentPage === 'staff-login') {
+      setCurrentPage('staff-dashboard');
+      toast.success('Welcome back, staff.');
+    } else {
+      setCurrentPage('home');
+      toast.success('Welcome back.');
+    }
   };
 
   const handleSignup = () => {
@@ -137,7 +144,9 @@ function AppContent() {
       case 'signup':
         return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} onNavigateToStaffLogin={() => setCurrentPage('staff-login')} />;
       case 'staff-login':
-        return <StaffLogin onLogin={handleLogin} />;
+        return <StaffLogin onLogin={handleLogin} onNavigateToHome={() => setCurrentPage('home')} />;
+      case 'staff-dashboard':
+        return <div className="pt-24">{user && <StaffDashboard user={user} />}</div>;
       case 'reception':
         return <ReceptionDesk />;
       case 'dashboard':

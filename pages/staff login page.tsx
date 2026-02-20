@@ -4,7 +4,7 @@ import { Eye, EyeOff } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function StaffLogin({ onLogin }: { onLogin: (user: any) => void }) {
+export function StaffLogin({ onLogin, onNavigateToHome }: { onLogin: (user: any) => void; onNavigateToHome?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -60,7 +60,7 @@ export function StaffLogin({ onLogin }: { onLogin: (user: any) => void }) {
         <div className="absolute top-0 left-0 w-full h-1 bg-[#D4AF37]" />
 
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Staff Sign In</h1>
+          <h1 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Staff Portal</h1>
           <p className="text-[#0A2342]/50 dark:text-[#F9F7F2]/70 text-xs uppercase tracking-widest">Staff portal access</p>
         </div>
 
