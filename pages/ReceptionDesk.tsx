@@ -48,9 +48,10 @@ export function ReceptionDesk() {
   
   const monthDays = getDaysInMonth(selectedDate);
   const firstDay = getFirstDayOfMonth(selectedDate);
-  const calendarDays = Array.from({ length: firstDay }, () => null).concat(
-    Array.from({ length: monthDays }, (_, i) => i + 1)
-  );
+  const calendarDays: (number | null)[] = [
+    ...Array.from({ length: firstDay }, () => null),
+    ...Array.from({ length: monthDays }, (_, i) => i + 1)
+  ];
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
