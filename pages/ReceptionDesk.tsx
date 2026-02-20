@@ -169,49 +169,49 @@ export function ReceptionDesk() {
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
             {/* Calendar */}
             <div className="lg:col-span-2">
-              <div className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow-lg p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">Select Date</h3>
+              <div className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg p-6">
+                <div className="text-center">
+                  <h3 className="text-lg font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-4">Select Date</h3>
                   
                   {/* Month/Year Header */}
                   <div className="flex items-center justify-between mb-6">
                     <button
                       onClick={previousMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] transition-colors"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37]"
                     >
                       <ChevronLeft size={20} />
                     </button>
-                    <p className="text-sm font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest">
+                    <p className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
                       {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear()}
                     </p>
                     <button
                       onClick={nextMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] transition-colors"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37]"
                     >
                       <ChevronRight size={20} />
                     </button>
                   </div>
 
                   {/* Day Names */}
-                  <div className="grid grid-cols-7 gap-2 mb-2">
+                  <div className="grid grid-cols-7 gap-0 mb-2 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
                     {dayNames.map((day) => (
-                      <div key={day} className="text-xs font-bold text-[#0A2342]/60 dark:text-[#F9F7F2]/60 py-2">
+                      <div key={day} className="text-xs font-semibold text-[#0A2342]/70 dark:text-[#F9F7F2]/70 py-2">
                         {day}
                       </div>
                     ))}
                   </div>
 
                   {/* Calendar Days */}
-                  <div className="grid grid-cols-7 gap-2">
+                  <div className="grid grid-cols-7 gap-0">
                     {calendarDays.map((day, idx) => (
                       <button
                         key={idx}
                         onClick={() => day && setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day))}
-                        className={`py-2 text-sm font-semibold rounded transition-colors ${
+                        className={`aspect-square flex items-center justify-center text-sm border border-[#0A2342]/5 dark:border-[#F9F7F2]/5 ${
                           day === null
                             ? ''
                             : day === selectedDate.getDate()
-                            ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#F9F7F2] dark:text-[#0A2342]'
+                            ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#F9F7F2] dark:text-[#0A2342] font-bold'
                             : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#F9F7F2]/50 dark:hover:bg-[#0A2342]/50'
                         }`}
                       >
@@ -222,14 +222,14 @@ export function ReceptionDesk() {
                 </div>
 
                 {/* Legend */}
-                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 pt-4 flex flex-col gap-2">
+                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-6 pt-4 flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">Available</p>
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <p className="text-xs text-[#0A2342]/70 dark:text-[#F9F7F2]/70">Available</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">Occupied</p>
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <p className="text-xs text-[#0A2342]/70 dark:text-[#F9F7F2]/70">Occupied</p>
                   </div>
                 </div>
               </div>
