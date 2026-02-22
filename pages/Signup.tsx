@@ -5,7 +5,7 @@ import { validatePassword } from '../lib/passwordPolicy';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; onNavigateToLogin: () => void }) {
+export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: { onSignup: () => void; onNavigateToLogin: () => void; onNavigateToStaffLogin?: () => void }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -215,6 +215,16 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
               className="text-[#D4AF37] font-bold hover:underline"
             >
               Sign In
+            </button>
+          </p>
+          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm mt-2">
+            Staff access:{' '}
+            <button
+              type="button"
+              onClick={() => onNavigateToStaffLogin && onNavigateToStaffLogin()}
+              className="text-[#D4AF37] font-bold hover:underline"
+            >
+              Staff Portal
             </button>
           </p>
         </div>

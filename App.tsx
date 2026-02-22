@@ -4,9 +4,8 @@ import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
 import { Landing } from './pages/Landing';
 import { Signup } from './pages/Signup';
-import StaffLogin from './pages/staff login page';
+import StaffLogin from './pages/StaffLoginPage';
 import ReceptionDesk from './pages/ReceptionDesk';
-import StaffDashboard from './pages/StaffDashboard';
 import { RoomCard } from './components/RoomCard';
 import { MissionVision } from './components/MissionVision';
 import { BookingPage } from './pages/Booking';
@@ -17,6 +16,8 @@ import { ROOMS, getUser, logoutUser, saveBooking, User, Booking } from './lib/st
 import { ThemeProvider } from './lib/theme';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
+
+// import StaffDashboard from "./pages/StaffDashboard"; // This line is being removed
 
 function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -32,14 +33,8 @@ function AppContent() {
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
-    // If logging in from staff page, go to staff dashboard
-    if (currentPage === 'staff-login') {
-      setCurrentPage('staff-dashboard');
-      toast.success('Welcome back, staff.');
-    } else {
-      setCurrentPage('home');
-      toast.success('Welcome back.');
-    }
+    setCurrentPage('home');
+    toast.success('Welcome back.');
   };
 
   const handleSignup = () => {
@@ -144,13 +139,11 @@ function AppContent() {
       case 'signup':
         return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} onNavigateToStaffLogin={() => setCurrentPage('staff-login')} />;
       case 'staff-login':
-        return <StaffLogin onLogin={handleLogin} onNavigateToHome={() => setCurrentPage('home')} />;
-      case 'staff-dashboard':
-        return <div className="pt-24">{user && <StaffDashboard user={user} />}</div>;
+        return <StaffLogin onLogin={handleLogin} />;
       case 'reception':
         return <ReceptionDesk />;
       case 'dashboard':
-        return <div className="pt-24">{user && <Dashboard user={user} onNavigateToReception={() => setCurrentPage('reception')} />}</div>;
+        return <div className="pt-24"><Dashboard user={user} /></div>;
       case 'booking':
         const room = ROOMS.find(r => r.id === selectedRoomId);
         return <div className="pt-24">{room && <BookingPage room={room} onConfirm={handleBookingConfirm} onCancel={() => setCurrentPage('rooms')} />}</div>;
