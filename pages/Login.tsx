@@ -4,7 +4,13 @@ import { Eye, EyeOff } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) => void, onNavigateToSignup: () => void }) {
+export function Login({
+  onLogin,
+  onNavigateToSignup,
+}: {
+  onLogin: (user: any) => void;
+  onNavigateToSignup: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -131,7 +137,7 @@ export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) =>
         return;
       }
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'User';
-      const user = { id: String(data._id), email: data.email, name };
+      const user = { id: String(data._id), email: data.email, name, role: (data.role === 'staff' ? 'staff' : 'guest') as 'guest' | 'staff' };
       localStorage.setItem('aurora_user', JSON.stringify(user));
       if (data.token) localStorage.setItem('aurora_token', data.token);
       if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
@@ -220,7 +226,7 @@ export function Login({ onLogin, onNavigateToSignup }: { onLogin: (user: any) =>
         <div className="mt-8 text-center">
           <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm">
             Don't have an account?{' '}
-            <button 
+            <button
               onClick={onNavigateToSignup}
               className="text-[#D4AF37] font-bold hover:underline"
             >

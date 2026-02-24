@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useTheme } from '../lib/theme';
 import { Sun, Moon } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function StaffLogin({
-  onLogin,
-  onNavigateToHome,
-  onNavigate,
-}: {
+interface AdminLoginProps {
   onLogin: (user: any) => void;
   onNavigateToHome?: () => void;
   onNavigate?: (page: string) => void;
-}) {
+}
+
+export function AdminLogin({ onLogin, onNavigateToHome, onNavigate }: AdminLoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,15 +36,18 @@ export function StaffLogin({
         return;
       }
 
-      const isStaff = data.role === 'staff' || data.isStaff || data.staff === true;
-      if (!isStaff) {
-        setError('This is not a staff account.');
+      const isAdmin = data.role === 'admin';
+      if (!isAdmin) {
+        setError('This is not an admin account.');
         setIsLoading(false);
         return;
       }
 
-      const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'Staff';
-      const user = { id: String(data._id), email: data.email, name, role: 'staff' as const };
+      const name =
+        [data.firstName, data.lastName].filter(Boolean).join(' ') ||
+        data.email?.split('@')[0] ||
+        'Admin';
+      const user = { id: String(data._id), email: data.email, name, role: 'admin' as const };
       localStorage.setItem('aurora_user', JSON.stringify(user));
       if (data.token) localStorage.setItem('aurora_token', data.token);
       if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
@@ -61,10 +61,13 @@ export function StaffLogin({
 
   return (
     <div className="min-h-screen bg-[#F5F0E8] dark:bg-[#0d1929] flex flex-col">
-      {/* Header: same as reference */}
       <header className="border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 bg-[#F9F7F2] dark:bg-[#0A2342]/95 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
-          <button type="button" onClick={() => (onNavigateToHome ? onNavigateToHome() : onNavigate?.('home'))} className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => (onNavigateToHome ? onNavigateToHome() : onNavigate?.('home'))}
+            className="flex items-center gap-2"
+          >
             <Logo className="text-[#0A2342] dark:text-[#F9F7F2]" />
           </button>
           <div className="flex items-center gap-8">
@@ -90,47 +93,37 @@ export function StaffLogin({
             >
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigate?.('login')}
-              className="px-5 py-2 text-xs font-bold uppercase tracking-widest border border-[#0A2342] dark:border-[#F9F7F2] text-[#0A2342] dark:text-[#F9F7F2] rounded hover:bg-[#0A2342] hover:text-[#F9F7F2] dark:hover:bg-[#F9F7F2] dark:hover:text-[#0A2342] transition-colors"
-            >
-              Sign In
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Centered card */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md bg-white dark:bg-[#0A2342]/80 border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl shadow-xl p-8"
         >
-          <div className="flex justify-center mb-6">
-            <div className="w-14 h-14 rounded-full bg-[#0A2342] dark:bg-[#153a66] flex items-center justify-center">
-              <ShieldCheck className="w-7 h-7 text-[#F9F7F2]" />
-            </div>
-          </div>
           <h1 className="text-2xl font-bold text-[#0A2342] dark:text-[#F9F7F2] text-center mb-1">
-            Staff Portal
+            Admin Portal
           </h1>
           <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest text-center mb-8">
-            Restricted Area
+            Full access control
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
-                Staff ID
+                Admin Email
               </label>
               <input
                 type="email"
                 required
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                placeholder="your@email.com"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError('');
+                }}
+                placeholder="admin@example.com"
                 className="w-full bg-[#F5F0E8] dark:bg-[#05152a] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
               />
             </div>
@@ -143,7 +136,10 @@ export function StaffLogin({
                 type="password"
                 required
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError('');
+                }}
                 placeholder="••••••••"
                 className="w-full bg-[#F5F0E8] dark:bg-[#05152a] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
               />
@@ -169,7 +165,6 @@ export function StaffLogin({
                 className="flex items-center gap-2 px-6 py-3 bg-[#0A2342] dark:bg-[#153a66] text-[#F9F7F2] font-bold uppercase tracking-widest text-xs rounded hover:bg-[#153a66] dark:hover:bg-[#D4AF37] dark:hover:text-[#0A2342] transition-colors disabled:opacity-70"
               >
                 {isLoading ? 'Signing in...' : 'Login'}
-                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </form>
@@ -179,4 +174,5 @@ export function StaffLogin({
   );
 }
 
-export default StaffLogin;
+export default AdminLogin;
+

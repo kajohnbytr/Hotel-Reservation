@@ -23,13 +23,32 @@ interface RoomStatus {
   status: 'available' | 'occupied';
 }
 
-export function ReceptionDesk() {
-  const [activeTab, setActiveTab] = useState<'reservations' | 'room-availability'>('reservations');
+interface GuestRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<'reservations' | 'availability' | 'guests' | 'add-room'>('reservations');
   const [searchQuery, setSearchQuery] = useState('');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 1, 20)); // Feb 20, 2026
+  const [selectedDate, setSelectedDate] = useState(new Date(2026, 1, 20));
+  const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [guestSearch, setGuestSearch] = useState('');
+  const [roomForm, setRoomForm] = useState({
+    name: '',
+    type: '',
+    pricePerNight: '',
+    maxGuests: '',
+    description: '',
+    imageUrl: '',
+    amenityInput: '',
+    amenities: [] as string[],
+  });
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
 
@@ -60,7 +79,7 @@ export function ReceptionDesk() {
   };
 
   useEffect(() => {
-    if (!token || activeTab !== 'room-availability') {
+    if (!token || activeTab !== 'availability') {
       setOccupiedRoomIds([]);
       return;
     }
@@ -68,10 +87,22 @@ export function ReceptionDesk() {
     fetch(`${API_BASE}/api/bookings/availability?date=${dateStr}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setOccupiedRoomIds(data.occupiedRoomIds || []))
+      .then((res) => (res.ok ? res.json() : { occupiedRoomIds: [] }))
+      .then((data: { occupiedRoomIds?: string[] }) => setOccupiedRoomIds(data.occupiedRoomIds || []))
       .catch(() => setOccupiedRoomIds([]));
   }, [token, activeTab, selectedDate]);
+
+  useEffect(() => {
+    if (!token || activeTab !== 'guests') {
+      return;
+    }
+    fetch(`${API_BASE}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setGuests(Array.isArray(data) ? data : []))
+      .catch(() => setGuests([]));
+  }, [token, activeTab]);
 
   const roomStatuses: RoomStatus[] = ROOMS.map((room) => ({
     roomId: room.id,
@@ -111,43 +142,102 @@ export function ReceptionDesk() {
   const formatDateHeader = (d: Date) =>
     `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 
+  const filteredGuests = guests.filter((g) => {
+    const q = guestSearch.toLowerCase();
+    return (
+      g.name.toLowerCase().includes(q) ||
+      g.email.toLowerCase().includes(q) ||
+      g.id.toLowerCase().includes(q)
+    );
+  });
+
+  const handleAddAmenity = () => {
+    const value = roomForm.amenityInput.trim();
+    if (!value) return;
+    if (roomForm.amenities.includes(value)) return;
+    setRoomForm((prev) => ({
+      ...prev,
+      amenities: [...prev.amenities, value],
+      amenityInput: '',
+    }));
+  };
+
+  const handleSubmitRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/rooms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: roomForm.name,
+          type: roomForm.type,
+          pricePerNight: Number(roomForm.pricePerNight),
+          maxGuests: Number(roomForm.maxGuests) || 2,
+          description: roomForm.description,
+          imageUrl: roomForm.imageUrl,
+          amenities: roomForm.amenities,
+        }),
+      });
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to create room');
+        return;
+      }
+      // Reset form on success
+      setRoomForm({
+        name: '',
+        type: '',
+        pricePerNight: '',
+        maxGuests: '',
+        description: '',
+        imageUrl: '',
+        amenityInput: '',
+        amenities: [],
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Create room error:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F9F7F2] dark:bg-[#0A2342] pt-24 px-6 pb-12">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#0A2342] dark:text-[#F9F7F2] mb-1">
-            Reception Desk
-          </h1>
-          <p className="text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
-            Manage Reservations & Guests
-          </p>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-[#0A2342] dark:text-[#F9F7F2] mb-1">
+              Admin Dashboard
+            </h1>
+            <p className="text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
+              Full Access Control
+            </p>
+          </div>
         </div>
 
-        {/* Tabs + Search row (reference: Reservations selected = dark blue, search on right) */}
+        {/* Tabs row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex rounded-lg overflow-hidden border border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
-            <button
-              type="button"
-              onClick={() => setActiveTab('reservations')}
-              className={`px-6 py-3 text-sm font-bold uppercase tracking-widest transition-colors ${
-                activeTab === 'reservations'
-                  ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
-                  : 'bg-white dark:bg-[#05152a] text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#F5F0E8] dark:hover:bg-[#0A2342]/50'
-              }`}
-            >
-              Reservations
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('room-availability')}
-              className={`px-6 py-3 text-sm font-bold uppercase tracking-widest transition-colors ${
-                activeTab === 'room-availability'
-                  ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
-                  : 'bg-white dark:bg-[#05152a] text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#F5F0E8] dark:hover:bg-[#0A2342]/50'
-              }`}
-            >
-              Room Availability
-            </button>
+          <div className="inline-flex rounded-full bg-[#F1F5F9] dark:bg-[#0A2342]/60 p-1 border border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
+            {['reservations', 'availability', 'guests', 'add-room'].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab as typeof activeTab)}
+                className={`px-4 py-2 text-xs font-semibold rounded-full uppercase tracking-widest transition-colors ${
+                  activeTab === tab
+                    ? 'bg-[#0A2342] text-[#F9F7F2]'
+                    : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-white/70 dark:hover:bg-[#0A2342]/40'
+                }`}
+              >
+                {tab === 'reservations' && 'Reservations'}
+                {tab === 'availability' && 'Availability'}
+                {tab === 'guests' && 'Guests'}
+                {tab === 'add-room' && '+ Add Room'}
+              </button>
+            ))}
           </div>
 
           {activeTab === 'reservations' && (
@@ -164,6 +254,7 @@ export function ReceptionDesk() {
           )}
         </div>
 
+        {/* Reservations tab */}
         {activeTab === 'reservations' && (
           <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
@@ -216,12 +307,13 @@ export function ReceptionDesk() {
           </div>
         )}
 
-        {activeTab === 'room-availability' && (
+        {/* Availability tab */}
+        {activeTab === 'availability' && (
           <div className="flex flex-col md:flex-row md:justify-between gap-8 items-start">
             <div className="flex-shrink-0">
-              <div className="w-full max-w-sm bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg p-6">
+              <div className="w-full max-w-md bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-7">
                 <h3 className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-4">Select Date</h3>
-                <div className="rounded-2xl border border-[#E2E8F0] bg-[#F9FBFF] dark:bg-[#0A2342] px-6 py-4">
+                <div className="rounded-2xl border border-[#E2E8F0] bg-[#F9FBFF] dark:bg-[#0A2342] px-8 py-5">
                   <div className="flex items-center justify-between mb-3">
                     <button
                       type="button"
@@ -241,7 +333,7 @@ export function ReceptionDesk() {
                       <ChevronRight size={18} />
                     </button>
                   </div>
-                  <table className="w-full text-center text-xs">
+                  <table className="w-full text-center text-sm">
                     <thead>
                       <tr>
                         {dayNames.map((day) => (
@@ -326,7 +418,9 @@ export function ReceptionDesk() {
                       <div className="flex flex-col items-end">
                         <span
                           className={`text-sm font-bold ${
-                            room.status === 'available' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                            room.status === 'available'
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}
                         >
                           {room.status === 'available' ? 'Available' : 'Occupied'}
@@ -347,9 +441,173 @@ export function ReceptionDesk() {
             </div>
           </div>
         )}
+
+        {/* Guests tab */}
+        {activeTab === 'guests' && (
+          <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex items-center justify-between gap-4">
+              <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Guests</h2>
+              <div className="relative w-full max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={guestSearch}
+                  onChange={(e) => setGuestSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 bg-[#F9F7F2] dark:bg-[#0A2342] text-sm"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2]">
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">User ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGuests.map((g) => (
+                    <tr key={g.id} className="border-t border-[#E2E8F0] dark:border-[#1f2937]">
+                      <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.id}</td>
+                      <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2] font-medium">{g.name}</td>
+                      <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.email}</td>
+                      <td className="px-6 py-3 text-xs font-semibold text-[#0A2342]/70 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
+                        {g.role}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Add Room tab */}
+        {activeTab === 'add-room' && (
+          <div className="max-w-3xl mx-auto bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-2xl shadow-xl p-8">
+            <h2 className="text-2xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-6">Add New Accommodation</h2>
+            <form className="space-y-5" onSubmit={handleSubmitRoom}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                    Room Name
+                  </label>
+                  <input
+                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                    placeholder="e.g. Sunset Suite"
+                    value={roomForm.name}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                    Type
+                  </label>
+                  <input
+                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                    placeholder="Suite / Deluxe / Standard"
+                    value={roomForm.type}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, type: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                    Price per night (₱)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                    placeholder="100"
+                    value={roomForm.pricePerNight}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, pricePerNight: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                    Max Guests
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                    placeholder="2"
+                    value={roomForm.maxGuests}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, maxGuests: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                  Description
+                </label>
+                <textarea
+                  rows={3}
+                  className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                  placeholder="Describe the room..."
+                  value={roomForm.description}
+                  onChange={(e) => setRoomForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                  Image URL
+                </label>
+                <input
+                  className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                  placeholder="https://..."
+                  value={roomForm.imageUrl}
+                  onChange={(e) => setRoomForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                  Amenities
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
+                    placeholder="Add amenity (e.g. Wi‑Fi)"
+                    value={roomForm.amenityInput}
+                    onChange={(e) => setRoomForm((prev) => ({ ...prev, amenityInput: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-lg bg-[#0A2342] text-[#F9F7F2] text-xs font-bold uppercase tracking-widest"
+                    onClick={handleAddAmenity}
+                  >
+                    Add
+                  </button>
+                </div>
+                {roomForm.amenities.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {roomForm.amenities.map((a) => (
+                      <span
+                        key={a}
+                        className="px-2 py-1 rounded-full bg-[#0A2342]/5 dark:bg-[#F9F7F2]/10 text-xs text-[#0A2342]/80 dark:text-[#F9F7F2]/80"
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-lg bg-[#D4AF37] text-[#0A2342] font-bold uppercase tracking-widest text-xs"
+                >
+                  Add Room
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export default ReceptionDesk;
+export default AdminDashboard;
+

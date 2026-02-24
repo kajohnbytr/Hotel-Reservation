@@ -1,10 +1,10 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { ROOMS, getBookings, User } from '../lib/store';
-import { ReceptionDesk } from './ReceptionDesk';
 import { BarChart3, Shield } from 'lucide-react';
 import { formatDate } from '../lib/utils';
-export function Dashboard({ user, onNavigateToReception }: { user: User | null; onNavigateToReception?: () => void }) {
+
+export function Dashboard({ user }: { user: User | null }) {
   const allBookings = getBookings();
   const userBookings = user ? allBookings.filter(b => b.userId === user.id).reverse() : [];
   return (
@@ -16,7 +16,7 @@ export function Dashboard({ user, onNavigateToReception }: { user: User | null; 
           </h1>
           <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest text-xs">Your Journey History</p>
         </div>
-        {/* Dashboard Quick Access */}
+        {/* Dashboard Quick Access (Guest only) */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -28,10 +28,6 @@ export function Dashboard({ user, onNavigateToReception }: { user: User | null; 
             <p className="text-sm text-[#F9F7F2]/70">Overview of your bookings and activity</p>
           </div>
         </motion.div>
-        {/* Reception Desk Section */}
-        <div className="my-12">
-          <ReceptionDesk />
-        </div>
         <div>
           {user ? (
             userBookings.length === 0 ? (

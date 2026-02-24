@@ -22,6 +22,11 @@ const userSchema = new mongoose.Schema({
     },
     resetPasswordOTP: String,
     resetPasswordExpire: Date,
+    role: {
+        type: String,
+        enum: ['guest', 'staff', 'admin'],
+        default: 'guest',
+    },
 }, {timestamps: true});
 
 userSchema.pre('save', async function(next) {

@@ -88,6 +88,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  role?: 'guest' | 'staff';
 }
 
 // In-memory simulated storage

@@ -23,18 +23,22 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const ACCESS_TOKEN_EXPIRY = '5 seconds';   // Short-lived access token
-const REFRESH_TOKEN_EXPIRY = '5 seconds'; // Refresh token for renewal
+const ACCESS_TOKEN_EXPIRY = '15m';   // Access token lifetime
+const REFRESH_TOKEN_EXPIRY = '7d';   // Refresh token lifetime
 
 // Registration
 router.post('/register', authLimiter, registerValidation, async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    const user = await User.create({ firstName, lastName, email, password });
+    const normalizedRole =
+      role === 'staff' ? 'staff' :
+      role === 'admin' ? 'admin' :
+      'guest';
+    const user = await User.create({ firstName, lastName, email, password, role: normalizedRole });
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
     res.status(201).json({
@@ -42,6 +46,7 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      role: user.role || 'guest',
       token,
       refreshToken,
       expiresIn: 3600, // seconds for frontend
@@ -66,6 +71,7 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      role: user.role || 'guest',
       token,
       refreshToken,
       expiresIn: 3600,

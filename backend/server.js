@@ -7,6 +7,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.js';
 import aiRoutes from './routes/ai.js';
+import bookingRoutes from './routes/bookings.js';
+import roomRoutes from './routes/rooms.js';
+import adminRoutes from './routes/admin.js';
 import { connectDB } from './config/db.js';
 import { sanitizeNoSql } from './middleware/sanitizeNoSql.js';
 
@@ -46,6 +49,9 @@ app.use(sanitizeNoSql);
 
 app.use('/api/users', authRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/admin', adminRoutes);
 
 connectDB();
 

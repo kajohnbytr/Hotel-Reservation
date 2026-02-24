@@ -5,6 +5,8 @@ import { Chatbot } from './components/Chatbot';
 import { Landing } from './pages/Landing';
 import { Signup } from './pages/Signup';
 import StaffLogin from './pages/StaffLoginPage';
+import AdminLogin from './pages/AdminLogin';
+import AdminDashboard from './pages/AdminDashboard';
 import ReceptionDesk from './pages/ReceptionDesk';
 import { RoomCard } from './components/RoomCard';
 import { MissionVision } from './components/MissionVision';
@@ -28,13 +30,37 @@ function AppContent() {
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
-    setUser(getUser());
+    // Deep link support: /login/admin opens the Admin login screen
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path === '/login/admin') {
+        setCurrentPage('admin-login');
+      }
+    }
+
+    const storedUser = getUser();
+    if (storedUser) {
+      setUser(storedUser);
+      if (storedUser.role === 'staff') {
+        setCurrentPage('reception');
+      } else if (storedUser.role === 'admin') {
+        setCurrentPage('admin-dashboard');
+      }
+    }
   }, []);
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
-    setCurrentPage('home');
-    toast.success('Welcome back.');
+    if (newUser.role === 'staff') {
+      setCurrentPage('reception');
+      toast.success('Welcome back, staff.');
+    } else if (newUser.role === 'admin') {
+      setCurrentPage('admin-dashboard');
+      toast.success('Welcome back, admin.');
+    } else {
+      setCurrentPage('home');
+      toast.success('Welcome back.');
+    }
   };
 
   const handleSignup = () => {
@@ -68,20 +94,57 @@ function AppContent() {
     setCurrentPage('booking');
   };
 
-  const handleBookingConfirm = (hash: string, date: string, total: number) => {
+  const handleBookingConfirm = async (
+    hash: string,
+    checkIn: string,
+    checkOut: string,
+    nights: number,
+    guests: number,
+    total: number
+  ) => {
     if (!user || !selectedRoomId) return;
 
+    const room = ROOMS.find((r) => r.id === selectedRoomId);
     const newBooking: Booking = {
       id: Math.random().toString(36).substr(2, 9).toUpperCase(),
       roomId: selectedRoomId,
       userId: user.id,
-      date,
-      nights: Math.round(total / (ROOMS.find(r => r.id === selectedRoomId)?.price || 1)),
+      date: checkIn,
+      nights,
       totalPrice: total,
       status: 'confirmed',
       txHash: hash,
       timestamp: new Date().toISOString(),
     };
+
+    const token = localStorage.getItem('aurora_token');
+    if (token && room) {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/bookings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            guestName: user.name,
+            roomId: selectedRoomId,
+            roomName: room.name,
+            checkIn,
+            checkOut,
+            nights,
+            guests: guests || 1,
+            total,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.message || 'Could not save reservation to server.');
+        }
+      } catch {
+        toast.error('Could not save reservation to server.');
+      }
+    }
 
     saveBooking(newBooking);
     setCurrentBooking(newBooking);
@@ -139,9 +202,27 @@ function AppContent() {
       case 'signup':
         return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} onNavigateToStaffLogin={() => setCurrentPage('staff-login')} />;
       case 'staff-login':
-        return <StaffLogin onLogin={handleLogin} />;
+        return (
+          <StaffLogin
+            onLogin={handleLogin}
+            onNavigateToHome={() => setCurrentPage('home')}
+            onNavigate={setCurrentPage}
+          />
+        );
+      case 'admin-login':
+        return (
+          <AdminLogin
+            onLogin={handleLogin}
+            onNavigateToHome={() => setCurrentPage('home')}
+            onNavigate={setCurrentPage}
+          />
+        );
       case 'reception':
-        return <ReceptionDesk />;
+        return user && user.role === 'staff'
+          ? <ReceptionDesk />
+          : <div className="pt-24"><Dashboard user={user} /></div>;
+      case 'admin-dashboard':
+        return <div className="pt-24"><AdminDashboard /></div>;
       case 'dashboard':
         return <div className="pt-24"><Dashboard user={user} /></div>;
       case 'booking':

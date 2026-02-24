@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 interface BookingPageProps {
   room: Room;
-  onConfirm: (hash: string, date: string, total: number) => void;
+  onConfirm: (hash: string, checkIn: string, checkOut: string, nights: number, guests: number, total: number) => void;
   onCancel: () => void;
 }
 
@@ -42,7 +42,8 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
     setStep('blockchain');
     await wait(2500);
     const hash = generateBlockchainHash();
-    onConfirm(hash, checkIn, room.price * nights);
+    const total = room.price * nights;
+    onConfirm(hash, checkIn, checkOut, nights, guests, total);
   };
 
   const openDatePicker = (input: HTMLInputElement | null) => {
