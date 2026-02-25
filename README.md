@@ -14,6 +14,7 @@ A full-stack hotel reservation app with a React + Vite frontend and Node.js/Expr
 - npm (or yarn/pnpm)
 - MongoDB (local or [MongoDB Atlas](https://www.mongodb.com/atlas))
 - (Optional) SMTP for password-reset emails (e.g. Gmail, SendGrid)
+- **Blockchain (optional):** [Node.js](https://nodejs.org), Hardhat, and an Ethereum-compatible node (local ganache/hardhat node or testnet). You'll also need a funded account/private key for contract deployment and an RPC URL.
 
 ## Quick start
 
@@ -38,6 +39,11 @@ CORS_ORIGIN=http://localhost:5173
 # Optional: for password reset emails
 # EMAIL_USER=...
 # EMAIL_PASS=...
+
+# Blockchain (optional) - configure if using on-chain recording
+# ETH_PROVIDER_URL=http://127.0.0.1:8545         # or Infura/Alchemy RPC
+# PRIVATE_KEY=0x...                                # account used to send transactions
+# BOOKING_CONTRACT_ADDRESS=0x...                   # deployed contract address
 ```
 
 ### 3. Run
@@ -59,6 +65,36 @@ npm run dev
 - Backend API: http://localhost:5000  
 
 ### 4. (Optional) AI chatbot and room recommendation
+
+### 5. (Optional) Blockchain recording
+
+If you'd like to record reservations on an Ethereum-compatible chain:
+
+1. Install dependencies under `blockchain/`:
+   ```bash
+   cd blockchain
+   npm install
+   ```
+2. Compile contract:
+   ```bash
+   npm run compile
+   ```
+3. Start a local node. You have several options:
+   - **Hardhat** (default): `npx hardhat node` will launch a local chain on `http://127.0.0.1:8545`.
+   - **Ganache**: either run the desktop app (default port 7545) or use the CLI with `npm run start:ganache` (a mnemonic is included for convenience).
+   - **Public testnet/mainnet**: use an RPC URL from Infura/Alchemy and configure a funded account.
+4. Deploy the contract and note the address:
+   ```bash
+   # to localhost/Hardhat
+   npm run deploy:local
+   # to Ganache
+   npm run deploy:ganache
+   ```
+5. Set environment variables listed earlier (`ETH_PROVIDER_URL`, `PRIVATE_KEY`, `BOOKING_CONTRACT_ADDRESS`) in `backend/.env`.
+6. Restart backend; bookings will emit on-chain events and store transaction hash when available.
+
+If blockchain env vars are missing, on-chain calls are skipped and the app functions normally (with frontend hash simulation).
+
 
 The in-app chatbot and “tell me your budget/guests” recommendation go through the backend. The backend proxies to two Python services. To enable them:
 

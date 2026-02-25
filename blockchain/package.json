@@ -1,0 +1,17 @@
+{
+  "name": "hotel-reservation-blockchain",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "start:ganache": "ganache --port 8545 --mnemonic \"test test test test test test test test test test test junk\"",
+    "deploy:ganache": "hardhat run scripts/deploy.js --network ganache"
+  },
+  "devDependencies": {
+    "hardhat": "^2.16.0",
+    "@nomiclabs/hardhat-ethers": "^2.1.1",
+    "ethers": "^5.7.2",
+    "ganache": "^7.0.0"
+  }
+}

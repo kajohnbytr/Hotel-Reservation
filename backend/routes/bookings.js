@@ -1,6 +1,7 @@
 import express from 'express';
 import Booking from '../models/booking.js';
 import { protect } from '../middleware/auth.js';
+import { recordBookingOnChain } from '../blockchain.js';
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.get('/', protect, async (req, res) => {
       nights: b.nights,
       guests: b.guests,
       total: b.total,
+      txHash: b.txHash || '',
     }));
     res.json(list);
   } catch (error) {
@@ -37,6 +39,7 @@ router.get('/', protect, async (req, res) => {
 
 // Create booking (guest makes reservation)
 router.post('/', protect, async (req, res) => {
+  console.log('POST /api/bookings body', req.body, 'user', req.user && req.user._id);
   try {
     const { guestName, roomId, roomName, checkIn, checkOut, nights, guests, total } = req.body;
     if (!guestName || !roomId || !roomName || !checkIn || !checkOut || nights == null || total == null) {
@@ -53,6 +56,27 @@ router.post('/', protect, async (req, res) => {
       total: Number(total),
       userId: req.user._id,
     });
+
+    // attempt on-chain record asynchronously and save txHash if available
+    recordBookingOnChain({
+      guestName: booking.guestName,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      total: booking.total,
+    }).then(async (txHash) => {
+      if (txHash) {
+        console.log('Booking recorded on chain, tx=', txHash);
+        try {
+          booking.txHash = txHash;
+          await booking.save();
+        } catch (err) {
+          console.error('Failed to save txHash in booking record', err);
+        }
+      }
+    }).catch((err) => {
+      console.error('Failed to record booking on chain', err);
+    });
     res.status(201).json({
       id: booking._id.toString(),
       guestName: booking.guestName,
@@ -62,6 +86,7 @@ router.post('/', protect, async (req, res) => {
       nights: booking.nights,
       guests: booking.guests,
       total: booking.total,
+      txHash: booking.txHash || '',
     });
   } catch (error) {
     console.error('Create booking error:', error);

@@ -12,6 +12,9 @@
 | `CORS_ORIGIN` | No | Allowed frontend origin (default: `http://localhost:5173`). In production set to your frontend URL (e.g. `https://yourdomain.com`). |
 | `EMAIL_USER` | For reset | SMTP user for sending password-reset emails. |
 | `EMAIL_PASS` | For reset | SMTP password or app password. |
+| `ETH_PROVIDER_URL` | optional | RPC URL for Ethereum (e.g. `http://127.0.0.1:8545` or infura/Alchemy). |
+| `PRIVATE_KEY` | optional | Hex private key used to send bookings transactions. |
+| `BOOKING_CONTRACT_ADDRESS` | optional | Deployed smart contract address used for bookings. |
 
 Never commit `.env` or put secrets in the repo. Use your platform’s secret/config (e.g. Vercel, Railway, Render env vars).
 
@@ -43,11 +46,14 @@ For this project, keep the database name you use today (e.g. `aurora`). For each
 4. **HTTPS:** Serve frontend and API over HTTPS. Many hosts provide TLS automatically.
 5. **Build:** Run `npm run build` for the frontend and serve the `dist/` folder (or deploy to a static host). Run backend with `npm start` (or your process manager).
 
+> **Blockchain tip:** you can spin up a local chain quickly using `cd blockchain && npm run start:ganache` (Ganache Desktop defaults to port 7545). Deploy with `npm run deploy:ganache` or set `GANACHE_URL` if you're using a nonstandard port.
 ---
 
 ## Deploying backend (examples)
 
-- **Railway / Render / Fly.io:** Connect repo, set env vars, set start command to `node server.js` (or `npm start`) from the `backend` directory (or set root to `backend`).
+- **Railway / Render / Fly.io:** Connect repo, set env vars (include blockchain variables if using on-chain bookings), set start command to `node server.js` (or `npm start`) from the `backend` directory (or set root to `backend`).
+
+> **Note:** compile/deploy the smart contract (`blockchain/scripts/deploy.js`) and set `BOOKING_CONTRACT_ADDRESS` before enabling on-chain records.
 - **VPS:** Use a process manager (e.g. PM2): `pm2 start server.js --name aurora-api -i 1` inside `backend/`.
 
 ---

@@ -140,6 +140,11 @@ function AppContent() {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           toast.error(data.message || 'Could not save reservation to server.');
+        } else {
+          const data = await res.json().catch(() => ({}));
+          if (data.txHash) {
+            newBooking.txHash = data.txHash;
+          }
         }
       } catch {
         toast.error('Could not save reservation to server.');
