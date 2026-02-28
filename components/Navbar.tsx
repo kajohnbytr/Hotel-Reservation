@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X, User, Sun, Moon } from 'lucide-react';
 import { Logo } from './Logo';
+import { MetaMaskConnect } from './MetaMaskConnect';
 import { useTheme } from '../lib/theme';
 
 interface NavbarProps {
@@ -51,6 +52,8 @@ export function Navbar({ user, onNavigate, currentPage, onLogout }: NavbarProps)
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
 
+            <MetaMaskConnect />
+
             {user ? (
               <div className="flex items-center gap-6">
                 <span className="text-xs text-[#0A2342]/70 dark:text-[#F9F7F2]/70 uppercase tracking-widest">Hi, {user.name}</span>
@@ -98,17 +101,18 @@ export function Navbar({ user, onNavigate, currentPage, onLogout }: NavbarProps)
               <NavLink page="rooms" label="Rooms" />
               {user?.role === 'guest' && <NavLink page="dashboard" label="Dashboard" />}
               {user?.role === 'admin' && <NavLink page="admin-dashboard" label="Admin" />}
-              <div className="pt-6 border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 w-full flex justify-center">
-                {user ? (
-                  <button onClick={onLogout} className="text-[#0A2342] dark:text-[#F9F7F2] uppercase text-sm tracking-widest">
-                    Logout
-                  </button>
-                ) : (
-                  <button onClick={() => { onNavigate('login'); setIsOpen(false); }} className="text-[#0A2342] dark:text-[#F9F7F2] uppercase text-sm tracking-widest">
-                    Sign In
-                  </button>
-                )}
-              </div>
+            <div className="pt-6 border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 w-full flex flex-col items-center gap-4">
+              <MetaMaskConnect />
+              {user ? (
+                <button onClick={onLogout} className="text-[#0A2342] dark:text-[#F9F7F2] uppercase text-sm tracking-widest">
+                  Logout
+                </button>
+              ) : (
+                <button onClick={() => { onNavigate('login'); setIsOpen(false); }} className="text-[#0A2342] dark:text-[#F9F7F2] uppercase text-sm tracking-widest">
+                  Sign In
+                </button>
+              )}
+            </div>
             </div>
           </motion.div>
         )}

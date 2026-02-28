@@ -2,8 +2,9 @@ import { useRef, useState, useEffect, type FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { Room } from '../lib/store';
 import { wait, generateBlockchainHash } from '../lib/utils';
-import { Calendar, CreditCard, Loader2, Lock, Users } from 'lucide-react';
+import { Calendar, CreditCard, Loader2, Lock, Users, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import { useWeb3 } from '../lib/web3Context';
 
 interface BookingPageProps {
   room: Room;
@@ -18,8 +19,10 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
   const [guests, setGuests] = useState(1);
   const [cardNumber, setCardNumber] = useState('');
   const [nights, setNights] = useState(1);
+  const [blockchainHash, setBlockchainHash] = useState<string | null>(null);
   const checkInInputRef = useRef<HTMLInputElement | null>(null);
   const checkOutInputRef = useRef<HTMLInputElement | null>(null);
+  const { isConnected, recordBookingOnChain, connectWallet } = useWeb3();
 
   useEffect(() => {
     if (checkIn && checkOut) {
@@ -38,12 +41,27 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
       return;
     }
     setStep('processing');
-    await wait(1500);
-    setStep('blockchain');
-    await wait(2500);
-    const hash = generateBlockchainHash();
+
+    let hash: string | null = null;
     const total = room.price * nights;
-    onConfirm(hash, checkIn, checkOut, nights, guests, total);
+
+    if (isConnected) {
+      // Record on blockchain using MetaMask
+      toast.loading('Recording booking on blockchain...');
+      hash = await recordBookingOnChain(
+        `Guest ${guests}`,
+        room.name,
+        checkIn,
+        checkOut,
+        total
+      );
+    } else {
+      // simulate instantly if wallet not connected
+      hash = generateBlockchainHash();
+      toast.info('Booking saved locally (wallet not connected)');
+    }
+
+    onConfirm(hash || generateBlockchainHash(), checkIn, checkOut, nights, guests, total);
   };
 
   const openDatePicker = (input: HTMLInputElement | null) => {
@@ -181,10 +199,28 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
               <Lock className="w-6 h-6 text-[#D4AF37]" />
             </div>
             <h3 className="text-lg font-bold text-[#0A2342] mb-2 uppercase tracking-wide">Secure Logging</h3>
-            <p className="text-[#0A2342]/60 text-sm mb-6">Recording transaction on Testnet</p>
-            <div className="bg-[#0A2342] p-3 text-[#D4AF37] font-mono text-xs overflow-hidden rounded-sm">
-               Mining Block...
-            </div>
+            
+            {!isConnected ? (
+              <>
+                <p className="text-[#0A2342]/60 text-sm mb-6">Connect your wallet to record on blockchain</p>
+                <button
+                  onClick={async () => {
+                    await connectWallet();
+                  }}
+                  className="flex items-center justify-center gap-2 mx-auto px-6 py-3 bg-[#D4AF37] text-[#0A2342] rounded-lg hover:bg-[#C99E2E] transition-colors font-bold"
+                >
+                  <Wallet className="w-4 h-4" />
+                  Connect MetaMask
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[#0A2342]/60 text-sm mb-6">Recording transaction on Ganache Testnet</p>
+                <div className="bg-[#0A2342] p-3 text-[#D4AF37] font-mono text-xs overflow-hidden rounded-sm">
+                  Mining Block...
+                </div>
+              </>
+            )}
           </div>
         )}
       </motion.div>

@@ -16,6 +16,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ROOMS, getUser, logoutUser, saveBooking, User, Booking } from './lib/store';
 import { ThemeProvider } from './lib/theme';
+import { Web3Provider } from './lib/web3Context';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
 
@@ -303,7 +304,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <Web3Provider>
+        <AppContent />
+      </Web3Provider>
     </ThemeProvider>
   );
 }
