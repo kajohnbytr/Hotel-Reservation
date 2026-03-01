@@ -1,6 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import User from '../models/user.js';
+import AuditLog from '../models/auditLog.js';
 import { protect } from '../middleware/auth.js';
 import {
   registerValidation,
@@ -14,6 +15,44 @@ import crypto from 'crypto';
 
 const router = express.Router();
 
+// Per-email login attempt tracking: 5 attempts, then 10 min lockout
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 10;
+const loginAttempts = new Map(); // email (lowercase) -> { count, lockoutUntil }
+
+function getLoginAttempts(email) {
+  const key = (email || '').toLowerCase().trim();
+  if (!key) return null;
+  const entry = loginAttempts.get(key);
+  if (!entry) return { count: 0, lockoutUntil: null };
+  if (entry.lockoutUntil && Date.now() >= entry.lockoutUntil) {
+    loginAttempts.delete(key);
+    return { count: 0, lockoutUntil: null };
+  }
+  return entry;
+}
+
+function recordFailedAttempt(email) {
+  const key = (email || '').toLowerCase().trim();
+  if (!key) return { count: 0, remainingAttempts: 5, lockoutUntil: null };
+  let entry = loginAttempts.get(key);
+  if (!entry) {
+    entry = { count: 0, lockoutUntil: null };
+    loginAttempts.set(key, entry);
+  }
+  entry.count += 1;
+  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+    entry.lockoutUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
+  }
+  const remainingAttempts = Math.max(0, MAX_LOGIN_ATTEMPTS - entry.count);
+  return { count: entry.count, remainingAttempts, lockoutUntil: entry.lockoutUntil };
+}
+
+function clearLoginAttempts(email) {
+  const key = (email || '').toLowerCase().trim();
+  if (key) loginAttempts.delete(key);
+}
+
 // Stricter rate limit for auth endpoints (brute force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -24,7 +63,7 @@ const authLimiter = rateLimit({
 });
 
 const ACCESS_TOKEN_EXPIRY = '15m';   // Access token lifetime
-const REFRESH_TOKEN_EXPIRY = '7d';   // Refresh token lifetime
+const REFRESH_TOKEN_EXPIRY = '6h';   // Session: user must re-login after 6 hours
 
 // Registration
 router.post('/register', authLimiter, registerValidation, async (req, res) => {
@@ -39,6 +78,20 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       role === 'admin' ? 'admin' :
       'guest';
     const user = await User.create({ firstName, lastName, email, password, role: normalizedRole });
+    try {
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+      await AuditLog.create({
+        userId: user._id,
+        userEmail: user.email,
+        userName,
+        role: user.role || normalizedRole,
+        action: 'signup',
+        details: `New ${normalizedRole} signed up`,
+      });
+      console.log('[Audit] signup recorded for', user.email);
+    } catch (err) {
+      console.error('[Audit] Failed to record signup:', err.message);
+    }
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
     res.status(201).json({
@@ -49,7 +102,7 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       role: user.role || 'guest',
       token,
       refreshToken,
-      expiresIn: 3600, // seconds for frontend
+      expiresIn: 6 * 3600, // 6 hours in seconds for frontend
     });
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
@@ -60,12 +113,52 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
 router.post('/login', authLimiter, loginValidation, async (req, res) => {
   try {
     const { email, password } = req.body;
+    const key = (email || '').toLowerCase().trim();
+
+    // Check if this email is currently locked out
+    const attempt = getLoginAttempts(email);
+    if (attempt && attempt.lockoutUntil && Date.now() < attempt.lockoutUntil) {
+      const retryAfterSeconds = Math.ceil((attempt.lockoutUntil - Date.now()) / 1000);
+      return res.status(429).json({
+        message: 'Too many failed login attempts. Please try again later.',
+        retryAfterSeconds,
+        lockedUntil: new Date(attempt.lockoutUntil).toISOString(),
+      });
+    }
+
     const user = await User.findOne({ email });
     if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      const { remainingAttempts, lockoutUntil } = recordFailedAttempt(email);
+      const payload = {
+        message: 'Invalid email or password',
+        remainingAttempts,
+      };
+      if (lockoutUntil) {
+        payload.retryAfterSeconds = Math.ceil((lockoutUntil - Date.now()) / 1000);
+        payload.lockedUntil = new Date(lockoutUntil).toISOString();
+      }
+      return res.status(401).json(payload);
     }
+
+    clearLoginAttempts(email);
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
+    try {
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+      const role = user.role || 'guest';
+      const action = role === 'admin' ? 'admin_login' : role === 'staff' ? 'staff_login' : 'guest_login';
+      await AuditLog.create({
+        userId: user._id,
+        userEmail: user.email,
+        userName,
+        role,
+        action,
+        details: `${role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Guest'} logged in`,
+      });
+      console.log('[Audit]', action, 'recorded for', user.email);
+    } catch (err) {
+      console.error('[Audit] Failed to record login:', err.message);
+    }
     res.status(200).json({
       _id: user._id,
       firstName: user.firstName,
@@ -74,14 +167,14 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
       role: user.role || 'guest',
       token,
       refreshToken,
-      expiresIn: 3600,
+      expiresIn: 6 * 3600,
     });
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
   }
 });
 
-// Refresh token (short-lived + refresh)
+// Refresh token (new access token; session ends when refresh expires)
 router.post('/refresh', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -97,7 +190,7 @@ router.post('/refresh', async (req, res) => {
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     res.status(200).json({
       token,
-      expiresIn: 3600,
+      expiresIn: 6 * 3600,
     });
   } catch (error) {
     return res.status(401).json({ message: 'Not authorized, token failed' });

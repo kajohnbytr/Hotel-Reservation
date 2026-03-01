@@ -1,10 +1,19 @@
-import { useRef, useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { motion } from 'motion/react';
+import { DayPicker } from 'react-day-picker';
 import { Room } from '../lib/store';
-import { wait, generateBlockchainHash } from '../lib/utils';
-import { Calendar, CreditCard, Loader2, Lock, Users, Wallet } from 'lucide-react';
+import { generateBlockchainHash } from '../lib/utils';
+import { Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { useWeb3 } from '../lib/web3Context';
+import 'react-day-picker/dist/style.css';
+import '../styles/day-picker-dark.css';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+interface OccupiedRange {
+  checkIn: string;
+  checkOut: string;
+}
 
 interface BookingPageProps {
   room: Room;
@@ -12,27 +21,91 @@ interface BookingPageProps {
   onCancel: () => void;
 }
 
+/** Format date as YYYY-MM-DD in local time (avoids UTC shift). */
+function toDateOnly(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse YYYY-MM-DD as local date (so calendar selection matches the clicked day). */
+function parseLocalDate(str: string): Date {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function isInRange(date: Date, checkIn: string, checkOut: string): boolean {
+  const t = date.getTime();
+  const start = parseLocalDate(checkIn);
+  start.setHours(0, 0, 0, 0);
+  const end = parseLocalDate(checkOut);
+  end.setHours(23, 59, 59, 999);
+  return t >= start.getTime() && t <= end.getTime();
+}
+
 export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
-  const [step, setStep] = useState<'details' | 'processing' | 'blockchain'>('details');
+  const [step, setStep] = useState<'details' | 'processing'>('details');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState(1);
-  const [cardNumber, setCardNumber] = useState('');
   const [nights, setNights] = useState(1);
-  const [blockchainHash, setBlockchainHash] = useState<string | null>(null);
-  const checkInInputRef = useRef<HTMLInputElement | null>(null);
-  const checkOutInputRef = useRef<HTMLInputElement | null>(null);
-  const { isConnected, recordBookingOnChain, connectWallet } = useWeb3();
+  const [occupiedRanges, setOccupiedRanges] = useState<OccupiedRange[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
+
+  useEffect(() => {
+    const from = new Date();
+    const to = new Date();
+    to.setMonth(to.getMonth() + 6);
+    fetch(
+      `${API_BASE}/api/bookings/room/${encodeURIComponent(room.id)}/occupied-ranges?from=${toDateOnly(from)}&to=${toDateOnly(to)}`
+    )
+      .then((res) => (res.ok ? res.json() : { occupiedRanges: [] }))
+      .then((data: { occupiedRanges?: OccupiedRange[] }) => setOccupiedRanges(data.occupiedRanges || []))
+      .catch(() => setOccupiedRanges([]))
+      .finally(() => setAvailabilityLoading(false));
+  }, [room.id]);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const disabledMatcher = useMemo(() => {
+    return (date: Date) => {
+      const t = date.getTime();
+      if (t < today.getTime()) return true;
+      return occupiedRanges.some((r) => isInRange(date, r.checkIn, r.checkOut));
+    };
+  }, [occupiedRanges, today]);
+
+  const range = useMemo(() => {
+    if (!checkIn) return undefined;
+    const from = parseLocalDate(checkIn);
+    if (!checkOut) return { from };
+    return { from, to: parseLocalDate(checkOut) };
+  }, [checkIn, checkOut]);
 
   useEffect(() => {
     if (checkIn && checkOut) {
-      const start = new Date(checkIn);
-      const end = new Date(checkOut);
+      const start = parseLocalDate(checkIn);
+      const end = parseLocalDate(checkOut);
       const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       setNights(diffDays > 0 ? diffDays : 1);
     }
   }, [checkIn, checkOut]);
+
+  const overlapsOccupied = (from: string, to: string): boolean => {
+    const start = parseLocalDate(from).getTime();
+    const end = parseLocalDate(to).getTime();
+    return occupiedRanges.some((r) => {
+      const rStart = parseLocalDate(r.checkIn).getTime();
+      const rEnd = parseLocalDate(r.checkOut).getTime();
+      return start < rEnd && end > rStart;
+    });
+  };
 
   const handleBook = async (e: FormEvent) => {
     e.preventDefault();
@@ -40,37 +113,33 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
       toast.error(`Maximum guests for this room is ${room.maxGuests}`);
       return;
     }
-    setStep('processing');
-
-    let hash: string | null = null;
-    const total = room.price * nights;
-
-    if (isConnected) {
-      // Record on blockchain using MetaMask
-      toast.loading('Recording booking on blockchain...');
-      hash = await recordBookingOnChain(
-        `Guest ${guests}`,
-        room.name,
-        checkIn,
-        checkOut,
-        total
-      );
-    } else {
-      // simulate instantly if wallet not connected
-      hash = generateBlockchainHash();
-      toast.info('Booking saved locally (wallet not connected)');
-    }
-
-    onConfirm(hash || generateBlockchainHash(), checkIn, checkOut, nights, guests, total);
-  };
-
-  const openDatePicker = (input: HTMLInputElement | null) => {
-    if (!input) return;
-    if (typeof input.showPicker === 'function') {
-      input.showPicker();
+    if (!checkIn || !checkOut) {
+      toast.error('Please select check-in and check-out dates.');
       return;
     }
-    input.focus();
+    if (overlapsOccupied(checkIn, checkOut)) {
+      toast.error('This room is not available for the selected dates. Please choose different dates.');
+      return;
+    }
+    setStep('processing');
+
+    const total = room.price * nights;
+    const hash = generateBlockchainHash();
+    onConfirm(hash, checkIn, checkOut, nights, guests, total);
+  };
+
+  const handleRangeSelect = (range: { from?: Date; to?: Date } | undefined) => {
+    if (!range?.from) {
+      setCheckIn('');
+      setCheckOut('');
+      return;
+    }
+    setCheckIn(toDateOnly(range.from));
+    if (range.to) {
+      setCheckOut(toDateOnly(range.to));
+    } else {
+      setCheckOut('');
+    }
   };
 
   return (
@@ -78,109 +147,84 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white border border-[#0A2342]/10 shadow-xl p-8 md:p-12 rounded-2xl"
+        className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 shadow-xl p-8 md:p-12 rounded-2xl"
       >
-        <div className="text-center mb-10 border-b border-[#0A2342]/10 pb-6">
-          <h2 className="text-3xl font-serif text-[#0A2342] mb-2">Reservation</h2>
-          <p className="text-[#0A2342]/60 uppercase tracking-widest text-xs">Confirm your stay details</p>
+        <div className="text-center mb-10 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 pb-6">
+          <h2 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Reservation</h2>
+          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 uppercase tracking-widest text-xs">Confirm your stay details</p>
         </div>
 
         {step === 'details' && (
           <form onSubmit={handleBook} className="space-y-8">
-            <div className="bg-[#F9F7F2] p-6 border border-[#0A2342]/5">
+            <div className="bg-[#F9F7F2] dark:bg-[#05152a] p-6 border border-[#0A2342]/5 dark:border-[#F9F7F2]/10">
               <h3 className="text-[#D4AF37] font-serif text-xl mb-1">{room.name}</h3>
-              <p className="text-[#0A2342]/60 text-sm mb-4">Total for {nights} night(s): <span className="text-[#0A2342] font-bold">₱{room.price * nights}</span></p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold text-[#0A2342] uppercase tracking-wider mb-2">Check-in</label>
-                <div className="relative">
-                  <label
-                    htmlFor="check-in-input"
-                    className="absolute left-3 top-3 cursor-pointer z-10 hover:text-[#D4AF37] transition-colors text-[#0A2342]/40"
-                    onClick={() => openDatePicker(checkInInputRef.current)}
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </label>
-                  <input
-                    id="check-in-input"
-                    type="date"
-                    required
-                    value={checkIn}
-                    onChange={(e) => setCheckIn(e.target.value)}
-                    ref={checkInInputRef}
-                    className="date-input w-full bg-white border border-[#0A2342]/20 py-3 pl-10 pr-10 text-center text-[#0A2342] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg pointer-events-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-[#0A2342] uppercase tracking-wider mb-2">Check-out</label>
-                <div className="relative">
-                  <label
-                    htmlFor="check-out-input"
-                    className="absolute left-3 top-3 cursor-pointer z-10 hover:text-[#D4AF37] transition-colors text-[#0A2342]/40"
-                    onClick={() => openDatePicker(checkOutInputRef.current)}
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </label>
-                  <input
-                    id="check-out-input"
-                    type="date"
-                    required
-                    value={checkOut}
-                    min={checkIn}
-                    onChange={(e) => setCheckOut(e.target.value)}
-                    ref={checkOutInputRef}
-                    className="date-input w-full bg-white border border-[#0A2342]/20 py-3 pl-10 pr-10 text-center text-[#0A2342] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg pointer-events-none"
-                  />
-                </div>
-              </div>
+              <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm mb-4">Total for {nights} night(s): <span className="text-[#0A2342] dark:text-[#F9F7F2] font-bold">₱{room.price * nights}</span></p>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#0A2342] uppercase tracking-wider mb-2">Guests</label>
+              <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
+                Select dates (blocked dates are already booked)
+              </label>
+              {availabilityLoading ? (
+                <div className="flex items-center justify-center py-8 text-[#0A2342]/60 dark:text-[#F9F7F2]/70">
+                  <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                  Loading availability...
+                </div>
+              ) : (
+                <div className="flex justify-center dark:bg-[#05152a] dark:rounded-xl dark:p-4 dark:text-[#F9F7F2] [&_.rdp]:dark:!text-[#F9F7F2] [&_.rdp_button]:dark:!text-[#F9F7F2] [&_.rdp_caption_label]:dark:!text-[#F9F7F2] [&_.rdp_head_cell]:dark:!text-[#F9F7F2]/80 [&_.rdp-day]:dark:!text-[#F9F7F2] [&_.rdp-nav]:dark:!text-[#F9F7F2] [&_.rdp-day_disabled]:opacity-40 [&_.rdp-day_disabled]:cursor-not-allowed [&_.rdp-day_disabled]:line-through [&_.rdp-day_selected]:bg-[#D4AF37] [&_.rdp-day_selected]:text-[#0A2342] [&_.rdp-day_today]:font-bold [&_.rdp-day_today]:text-[#D4AF37]">
+                  <DayPicker
+                    mode="range"
+                    selected={range}
+                    onSelect={handleRangeSelect}
+                    disabled={disabledMatcher}
+                    defaultMonth={today}
+                    numberOfMonths={1}
+                  />
+                </div>
+              )}
+              {checkIn && (
+                <p className="text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/80 mt-2 text-center">
+                  Check-in: <strong>{checkIn}</strong>
+                  {checkOut && (
+                    <> · Check-out: <strong>{checkOut}</strong></>
+                  )}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Guests</label>
               <div className="relative">
-                <Users className="absolute left-3 top-3 w-4 h-4 text-[#0A2342]/40" />
+                <Users className="absolute left-3 top-3 w-4 h-4 text-[#0A2342]/40 dark:text-[#F9F7F2]/50" />
                 <input
                   type="number"
                   min="1"
                   max={room.maxGuests}
                   value={guests}
                   onChange={(e) => setGuests(parseInt(e.target.value))}
-                  className="w-full bg-white border border-[#0A2342]/20 py-3 pl-10 pr-4 text-[#0A2342] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
+                  className="w-full bg-white dark:bg-[#05152a] border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 py-3 pl-10 pr-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
                 />
               </div>
-              <p className="text-[10px] text-[#0A2342]/50 mt-1 uppercase tracking-wide">Max guests: {room.maxGuests}</p>
+              <p className="text-[10px] text-[#0A2342]/50 dark:text-[#F9F7F2]/60 mt-1 uppercase tracking-wide">Max guests: {room.maxGuests}</p>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-[#0A2342] uppercase tracking-wider mb-2">Payment</label>
-              <div className="relative">
-                <CreditCard className="absolute left-3 top-3 w-4 h-4 text-[#0A2342]/40" />
-                <input
-                  type="text"
-                  placeholder="Card Number"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
-                  className="w-full bg-white border border-[#0A2342]/20 py-3 pl-10 pr-4 text-[#0A2342] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
-                />
-              </div>
-            </div>
+            <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/70">
+              Your reservation may be recorded on the blockchain for a tamper-proof record. No payment is collected here—this is reservation only.
+            </p>
 
             <div className="flex gap-4 pt-6">
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 py-3 text-[#0A2342]/60 hover:text-[#0A2342] transition-colors text-sm font-bold uppercase tracking-wider rounded-lg"
+                className="flex-1 py-3 text-[#0A2342]/60 dark:text-[#F9F7F2]/70 hover:text-[#0A2342] dark:hover:text-[#F9F7F2] transition-colors text-sm font-bold uppercase tracking-wider rounded-lg"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-[#0A2342] text-[#F9F7F2] py-4 hover:bg-[#153a66] transition-colors uppercase tracking-widest text-xs font-bold shadow-lg rounded-lg"
+                className="flex-1 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342] py-4 hover:bg-[#153a66] dark:hover:bg-[#C99E2E] transition-colors uppercase tracking-widest text-xs font-bold shadow-lg rounded-lg"
               >
-                Confirm
+                Confirm reservation
               </button>
             </div>
           </form>
@@ -189,40 +233,10 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
         {step === 'processing' && (
           <div className="text-center py-12">
             <Loader2 className="w-10 h-10 text-[#D4AF37] animate-spin mx-auto mb-6" />
-            <p className="text-[#0A2342] font-medium tracking-wide">Processing Payment...</p>
+            <p className="text-[#0A2342] dark:text-[#F9F7F2] font-medium tracking-wide">Confirming reservation...</p>
           </div>
         )}
 
-        {step === 'blockchain' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 border-2 border-[#D4AF37] rounded-full flex items-center justify-center mx-auto mb-6">
-              <Lock className="w-6 h-6 text-[#D4AF37]" />
-            </div>
-            <h3 className="text-lg font-bold text-[#0A2342] mb-2 uppercase tracking-wide">Secure Logging</h3>
-            
-            {!isConnected ? (
-              <>
-                <p className="text-[#0A2342]/60 text-sm mb-6">Connect your wallet to record on blockchain</p>
-                <button
-                  onClick={async () => {
-                    await connectWallet();
-                  }}
-                  className="flex items-center justify-center gap-2 mx-auto px-6 py-3 bg-[#D4AF37] text-[#0A2342] rounded-lg hover:bg-[#C99E2E] transition-colors font-bold"
-                >
-                  <Wallet className="w-4 h-4" />
-                  Connect MetaMask
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-[#0A2342]/60 text-sm mb-6">Recording transaction on Ganache Testnet</p>
-                <div className="bg-[#0A2342] p-3 text-[#D4AF37] font-mono text-xs overflow-hidden rounded-sm">
-                  Mining Block...
-                </div>
-              </>
-            )}
-          </div>
-        )}
       </motion.div>
     </div>
   );

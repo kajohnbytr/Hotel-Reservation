@@ -5,7 +5,7 @@ import { validatePassword } from '../lib/passwordPolicy';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: { onSignup: () => void; onNavigateToLogin: () => void; onNavigateToStaffLogin?: () => void }) {
+export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; onNavigateToLogin: () => void }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -30,10 +30,20 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
 
   const nameHasNumbers = (s: string) => /\d/.test(s);
 
+  const isValidEmail = (value: string) => {
+    if (!value.trim()) return true;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  };
+  const showEmailInvalid = email.length > 0 && !isValidEmail(email);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptedTerms) {
       setShowTermsError(true);
+      return;
+    }
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address.');
       return;
     }
     if (nameHasNumbers(firstName.trim())) {
@@ -128,8 +138,15 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(''); }}
               placeholder="you@gmail.com"
-              className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
+              className={`w-full bg-[#F9F7F2] dark:bg-[#05152a] border py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none transition-colors rounded-lg ${
+                showEmailInvalid ? 'border-red-500 dark:border-red-400 focus:border-red-500' : 'border-[#0A2342]/10 dark:border-[#F9F7F2]/10 focus:border-[#D4AF37]'
+              }`}
             />
+            {showEmailInvalid && (
+              <p className="mt-1.5 text-xs text-red-600 dark:text-red-400" role="alert">
+                Please enter a valid email address.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Password</label>
@@ -215,16 +232,6 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               className="text-[#D4AF37] font-bold hover:underline"
             >
               Sign In
-            </button>
-          </p>
-          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm mt-2">
-            Staff access:{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateToStaffLogin && onNavigateToStaffLogin()}
-              className="text-[#D4AF37] font-bold hover:underline"
-            >
-              Staff Portal
             </button>
           </p>
         </div>

@@ -17,11 +17,22 @@ function deduplicateRepeatedWords(text: string): string {
 export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([
-    { role: 'bot', text: 'Welcome to Aurora. How may I assist you today?' },
+    { role: 'bot', text: 'Welcome to Aurora. Ask about rooms, wifi, prices, or how to reserve. You can also tell me your budget or number of guests for a suggestion.' },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const suggestionsScrollRef = useRef<HTMLDivElement>(null);
+
+  const quickReplies = [
+    'What rooms do you have?',
+    "What's the price range?",
+    'I need a room for 2 guests',
+    'Tell me about wifi',
+    'How do I make a reservation?',
+    'Recommend a room for my budget',
+    'Is wifi included?',
+  ];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -49,34 +60,42 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
 
   // ================= EXTRACT BOOKING INFO =================
   const extractBookingInfo = (text: string) => {
-    const numbers = text.match(/\d+/g);
-
+    const lower = text.toLowerCase();
+    const numbers = text.match(/\d+/g) || [];
     let guests = 2;
     let nights = 1;
-    let price = 2500;
+    let price = 500;
 
-    if (numbers) {
-      if (numbers[0]) guests = parseInt(numbers[0]);
-      if (numbers[1]) nights = parseInt(numbers[1]);
-      if (numbers[2]) price = parseInt(numbers[2]);
-    }
+    // "2 guests" / "for 2 people" / "2 people"
+    const guestMatch = lower.match(/(\d+)\s*(guest|people|person|adult|pax)/) || lower.match(/(?:for|party of)\s*(\d+)/);
+    if (guestMatch) guests = parseInt(guestMatch[1], 10) || guests;
 
-    return { guests, nights, price };
+    // "3 nights" / "3 days" / "stay 2 nights"
+    const nightMatch = lower.match(/(\d+)\s*(night|day)/) || lower.match(/(?:stay|for)\s*(\d+)/);
+    if (nightMatch) nights = parseInt(nightMatch[1], 10) || nights;
+
+    // "budget 5000" / "under 300" / "price 200" / "₱1000"
+    const priceMatch = lower.match(/(?:budget|under|max|price|₱|php|peso)\s*(\d+)/i) || lower.match(/(\d+)\s*(?:budget|peso|php)/i);
+    if (priceMatch) price = parseInt(priceMatch[1], 10) || price;
+    else if (numbers.length >= 3) price = parseInt(numbers[2], 10) || price;
+    else if (numbers.length === 2) { guests = parseInt(numbers[0], 10) || guests; nights = parseInt(numbers[1], 10) || nights; }
+    else if (numbers.length === 1) guests = parseInt(numbers[0], 10) || guests;
+
+    return { guests: Math.min(10, Math.max(1, guests)), nights: Math.min(30, Math.max(1, nights)), price };
   };
 
   // ================= CALL AI RECOMMENDATION (via backend) =================
-  const callAI = async (bookingInfo: any) => {
+  const callAI = async (bookingInfo: { guests: number; nights: number; price: number }) => {
     try {
       const res = await fetch(`${API_BASE}/api/ai/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bookingInfo)
       });
-
       const data = await res.json();
-      return data.message ?? "I cannot access the recommendation system right now.";
+      return data;
     } catch {
-      return "I cannot access the recommendation system right now.";
+      return { message: "I cannot access the recommendation system right now." };
     }
   };
 
@@ -94,17 +113,22 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     let botResponse = "";
     const lowerInput = userMessage.toLowerCase();
 
-    // ===== DETECT BOOKING REQUEST =====
+    // ===== DETECT BOOKING / RECOMMENDATION REQUEST =====
+    let recommendedType: string | null = null;
     if (
       lowerInput.includes("guest") ||
       lowerInput.includes("people") ||
       lowerInput.includes("person") ||
       lowerInput.includes("night") ||
       lowerInput.includes("budget") ||
-      lowerInput.includes("stay")
+      lowerInput.includes("stay") ||
+      lowerInput.includes("recommend") ||
+      lowerInput.includes("suggest")
     ) {
       const bookingInfo = extractBookingInfo(userMessage);
-      botResponse = await callAI(bookingInfo);
+      const data = await callAI(bookingInfo);
+      botResponse = typeof data === 'string' ? data : (data?.message ?? data);
+      if (typeof data === 'object' && data?.type) recommendedType = data.type;
     }
 
     // ===== NORMAL CHAT =====
@@ -114,7 +138,31 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
 
     botResponse = deduplicateRepeatedWords(botResponse);
     setMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
+    if (recommendedType && onRecommend) onRecommend(recommendedType);
     setIsTyping(false);
+  };
+
+  const handleQuickReply = (text: string) => {
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setIsTyping(true);
+    (async () => {
+      await wait(600);
+      const lower = text.toLowerCase();
+      let botResponse: string;
+      let recommendedType: string | null = null;
+      if (/\b(guest|people|night|budget|stay|room|recommend)\b/.test(lower)) {
+        const info = extractBookingInfo(text);
+        const data = await callAI(info);
+        botResponse = typeof data === 'object' && data?.message ? data.message : String(data);
+        if (typeof data === 'object' && data?.type) recommendedType = data.type;
+      } else {
+        botResponse = await askNLP(text);
+      }
+      setMessages(prev => [...prev, { role: 'bot', text: deduplicateRepeatedWords(botResponse) }]);
+      if (recommendedType && onRecommend) onRecommend(recommendedType);
+      setIsTyping(false);
+    })();
   };
 
   return (
@@ -136,7 +184,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-8 right-8 z-50 w-80 sm:w-96 h-[500px] bg-[#F9F7F2] border border-[#0A2342]/20 shadow-2xl flex flex-col overflow-hidden rounded-2xl"
+            className="fixed bottom-8 right-8 z-50 w-80 sm:w-96 h-[500px] bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 shadow-2xl flex flex-col overflow-hidden rounded-2xl"
           >
             <div className="p-4 bg-[#0A2342] text-[#F9F7F2] flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -155,7 +203,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
                     className={`max-w-[85%] p-4 text-sm leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-[#0A2342] text-white rounded-t-xl rounded-bl-xl'
-                        : 'bg-white border border-[#0A2342]/10 text-[#0A2342] rounded-t-xl rounded-br-xl'
+                        : 'bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 text-[#0A2342] dark:text-[#F9F7F2] rounded-t-xl rounded-br-xl'
                     }`}
                   >
                     {msg.text}
@@ -165,18 +213,51 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
 
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-white border border-[#0A2342]/10 p-4 rounded-t-xl rounded-br-xl">
+                  <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 p-4 rounded-t-xl rounded-br-xl">
                     <div className="flex gap-1.5">
-                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 rounded-full animate-bounce" />
-                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 rounded-full animate-bounce delay-100" />
-                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 rounded-full animate-bounce delay-200" />
+                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 dark:bg-[#F9F7F2]/40 rounded-full animate-bounce" />
+                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 dark:bg-[#F9F7F2]/40 rounded-full animate-bounce delay-100" />
+                      <span className="w-1.5 h-1.5 bg-[#0A2342]/40 dark:bg-[#F9F7F2]/40 rounded-full animate-bounce delay-200" />
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="p-4 bg-white border-t border-[#0A2342]/10">
+            <div className="flex-shrink-0 w-full min-w-0 flex flex-col border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 bg-[#F9F7F2]/30 dark:bg-[#05152a]/50">
+              <div
+                ref={suggestionsScrollRef}
+                role="region"
+                aria-label="Suggestion chips"
+                className="chatbot-suggestions-scroll w-full min-w-0 overflow-x-scroll overflow-y-hidden"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+                onWheel={(e) => {
+                  const el = suggestionsScrollRef.current;
+                  if (!el || e.deltaY === 0) return;
+                  const canScrollLeft = el.scrollLeft > 0;
+                  const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
+                  if ((e.deltaY > 0 && canScrollRight) || (e.deltaY < 0 && canScrollLeft)) {
+                    e.preventDefault();
+                    el.scrollLeft += e.deltaY;
+                  }
+                }}
+              >
+                <div className="flex flex-nowrap gap-2 px-4 py-2.5 pb-3" style={{ width: 'max-content', minWidth: 'max-content' }}>
+                  {quickReplies.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => handleQuickReply(q)}
+                      className="flex-shrink-0 inline-flex items-center px-4 py-2 rounded-xl text-sm font-medium bg-[#0A2342] text-white hover:bg-[#153a66] dark:bg-[#0A2342] dark:text-[#F9F7F2] dark:hover:bg-[#153a66] border-0 transition-colors shadow-sm"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-white dark:bg-[#05152a] border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -184,7 +265,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   placeholder="Ask about rooms, wifi, or tell your budget..."
-                  className="flex-1 bg-[#F9F7F2] border border-[#0A2342]/20 rounded-lg px-4 py-3 text-[#0A2342] text-sm focus:outline-none focus:border-[#D4AF37]"
+                  className="flex-1 bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 rounded-lg px-4 py-3 text-[#0A2342] dark:text-[#F9F7F2] text-sm focus:outline-none focus:border-[#D4AF37]"
                 />
                 <button
                   onClick={handleSend}

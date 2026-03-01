@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
@@ -14,11 +14,12 @@ import { BookingPage } from './pages/Booking';
 import { ConfirmationPage } from './pages/Confirmation';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
-import { ROOMS, getUser, logoutUser, saveBooking, User, Booking } from './lib/store';
+import { ROOMS, getUser, logoutUser, saveBooking, User, Booking, mapApiRoomToRoom, Room, isSessionExpired } from './lib/store';
 import { ThemeProvider } from './lib/theme';
-import { Web3Provider } from './lib/web3Context';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // import StaffDashboard from "./pages/StaffDashboard"; // This line is being removed
 
@@ -29,17 +30,105 @@ function AppContent() {
   const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   const [filteredRoomId, setFilteredRoomId] = useState<string | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>(ROOMS);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const INACTIVITY_MINUTES = 5;
+  const INACTIVITY_MS = INACTIVITY_MINUTES * 60 * 1000;
+
+  const clearInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+  }, []);
+
+  const startInactivityTimer = useCallback(() => {
+    clearInactivityTimer();
+    if (!user) return;
+    inactivityTimerRef.current = setTimeout(() => {
+      inactivityTimerRef.current = null;
+      logoutUser();
+      setUser(null);
+      setCurrentPage('home');
+      toast('Logged out due to inactivity.');
+    }, INACTIVITY_MS);
+  }, [user, clearInactivityTimer]);
 
   useEffect(() => {
-    // Deep link support: /login/admin opens the Admin login screen
+    if (!user) {
+      clearInactivityTimer();
+      return;
+    }
+    startInactivityTimer();
+    const resetTimer = () => startInactivityTimer();
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('scroll', resetTimer);
+    return () => {
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+      clearInactivityTimer();
+    };
+  }, [user, startInactivityTimer, clearInactivityTimer]);
+
+  const fetchRooms = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/rooms`);
+      if (res.ok) {
+        const data = await res.json();
+        const mapped = (data || []).map(mapApiRoomToRoom);
+        const staticIds = new Set(ROOMS.map((r) => r.id));
+        const fromApi = mapped.filter((r) => !staticIds.has(r.id));
+        setRooms([...ROOMS, ...fromApi]);
+      }
+    } catch {
+      // keep current rooms (ROOMS or previously fetched)
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRooms();
+  }, [fetchRooms]);
+
+  // If user is staff/admin, validate session with API; on 401 clear session so they must re-login
+  useEffect(() => {
+    if (!user || (user.role !== 'staff' && user.role !== 'admin')) return;
+    const token = localStorage.getItem('aurora_token');
+    if (!token) return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/bookings`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    }).then((res) => {
+      if (res.status === 401) {
+        logoutUser();
+        setUser(null);
+        setCurrentPage('home');
+      }
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [user]);
+
+  useEffect(() => {
+    // Deep link support: /login/admin and /login/staff open the correct login screen
     if (typeof window !== 'undefined') {
       const path = window.location.pathname;
       if (path === '/login/admin') {
         setCurrentPage('admin-login');
+      } else if (path === '/login/staff') {
+        setCurrentPage('staff-login');
       }
     }
 
     const storedUser = getUser();
+    if (storedUser && isSessionExpired()) {
+      logoutUser();
+      return;
+    }
     if (storedUser) {
       setUser(storedUser);
       if (storedUser.role === 'staff') {
@@ -49,6 +138,18 @@ function AppContent() {
       }
     }
   }, []);
+
+  // Keep URL in sync: /login/staff and /login/admin only when on those pages; otherwise reset to /
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (currentPage === 'staff-login') {
+      if (window.location.pathname !== '/login/staff') window.history.replaceState(null, '', '/login/staff');
+    } else if (currentPage === 'admin-login') {
+      if (window.location.pathname !== '/login/admin') window.history.replaceState(null, '', '/login/admin');
+    } else if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/');
+    }
+  }, [currentPage]);
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
@@ -159,7 +260,7 @@ function AppContent() {
   };
 
   const handleAiRecommend = (type: string) => {
-    const recommendedRoom = ROOMS.find(r => r.type === type);
+    const recommendedRoom = rooms.find(r => r.type === type);
     if (recommendedRoom) {
       setFilteredRoomId(recommendedRoom.id);
       setCurrentPage('rooms');
@@ -172,7 +273,7 @@ function AppContent() {
       case 'home':
         return (
           <Landing 
-            rooms={ROOMS} 
+            rooms={rooms} 
             onBook={handleBook} 
             onViewAllRooms={() => setCurrentPage('rooms')}
             onNavigateToStaffLogin={() => setCurrentPage('staff-login')}
@@ -195,7 +296,7 @@ function AppContent() {
             )}
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
-              {ROOMS.map(room => (
+              {rooms.map(room => (
                 <div key={room.id} className={`${filteredRoomId === room.id ? 'ring-2 ring-[#D4AF37] offset-4' : ''}`}>
                   <RoomCard room={room} onBook={handleBook} />
                 </div>
@@ -206,7 +307,7 @@ function AppContent() {
       case 'login':
         return <Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} />;
       case 'signup':
-        return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} onNavigateToStaffLogin={() => setCurrentPage('staff-login')} />;
+        return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} />;
       case 'staff-login':
         return (
           <StaffLogin
@@ -225,17 +326,17 @@ function AppContent() {
         );
       case 'reception':
         return user && user.role === 'staff'
-          ? <ReceptionDesk />
-          : <div className="pt-24"><Dashboard user={user} /></div>;
+          ? <ReceptionDesk rooms={rooms} />
+          : <div className="pt-24"><Dashboard user={user} rooms={rooms} /></div>;
       case 'admin-dashboard':
-        return <div className="pt-24"><AdminDashboard /></div>;
+        return <div className="pt-24"><AdminDashboard rooms={rooms} onRoomsUpdated={fetchRooms} /></div>;
       case 'dashboard':
-        return <div className="pt-24"><Dashboard user={user} /></div>;
+        return <div className="pt-24"><Dashboard user={user} rooms={rooms} /></div>;
       case 'booking':
-        const room = ROOMS.find(r => r.id === selectedRoomId);
+        const room = rooms.find(r => r.id === selectedRoomId);
         return <div className="pt-24">{room && <BookingPage room={room} onConfirm={handleBookingConfirm} onCancel={() => setCurrentPage('rooms')} />}</div>;
       case 'confirmation':
-        return <div className="pt-24">{currentBooking && <ConfirmationPage booking={currentBooking} onDashboard={() => setCurrentPage('dashboard')} />}</div>;
+        return <div className="pt-24">{currentBooking && <ConfirmationPage booking={currentBooking} rooms={rooms} onDashboard={() => setCurrentPage('dashboard')} />}</div>;
       default:
         return null;
     }
@@ -304,9 +405,7 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <Web3Provider>
-        <AppContent />
-      </Web3Provider>
+      <AppContent />
     </ThemeProvider>
   );
 }

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
-import { ROOMS } from '../lib/store';
+import { toast } from 'sonner';
+import { Room } from '../lib/store';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -30,15 +31,59 @@ interface GuestRow {
   role: string;
 }
 
-export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'reservations' | 'availability' | 'guests' | 'add-room'>('reservations');
+interface AdminDashboardProps {
+  rooms: Room[];
+  onRoomsUpdated?: () => void;
+}
+
+function formatAuditDate(isoString: string | undefined): string {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  const date = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+  return `${date} at ${time}`;
+}
+
+function getRelativeTime(isoString: string | undefined): string | null {
+  if (!isoString) return null;
+  const d = new Date(isoString);
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60) return 'Just now';
+  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} hr ago`;
+  if (sec < 604800) return `${Math.floor(sec / 86400)} days ago`;
+  return null;
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  admin_login: 'Admin login',
+  staff_login: 'Staff login',
+  guest_login: 'Guest login',
+  signup: 'Sign up',
+  guest_booking: 'Made reservation',
+  staff_viewed_reservations: 'Viewed reservations',
+  staff_viewed_availability: 'Viewed availability',
+  dashboard_view: 'Opened dashboard',
+  tab_view: 'Viewed tab',
+  room_added: 'Room added',
+};
+
+function getAuditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] || action.replace(/_/g, ' ');
+}
+
+export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'reservations' | 'availability' | 'guests' | 'add-room' | 'audit-logs'>('reservations');
   const [searchQuery, setSearchQuery] = useState('');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 1, 20));
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [guestSearch, setGuestSearch] = useState('');
+  const [auditLogs, setAuditLogs] = useState<{ _id: string; userEmail: string; userName: string; role?: string; action: string; details: string; createdAt: string }[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditRoleFilter, setAuditRoleFilter] = useState<string>('');
   const [roomForm, setRoomForm] = useState({
     name: '',
     type: '',
@@ -51,6 +96,30 @@ export function AdminDashboard() {
   });
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
+
+  const recordAudit = useCallback((action: string, details: string) => {
+    if (!token) return;
+    fetch(`${API_BASE}/api/admin/audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action, details }),
+    }).catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (token) recordAudit('dashboard_view', 'Opened admin dashboard');
+  }, []);
+
+  useEffect(() => {
+    if (!token || activeTab !== 'audit-logs') return;
+    setAuditLoading(true);
+    const url = auditRoleFilter ? `${API_BASE}/api/admin/audit?role=${encodeURIComponent(auditRoleFilter)}` : `${API_BASE}/api/admin/audit`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setAuditLogs(Array.isArray(data) ? data : []))
+      .catch(() => setAuditLogs([]))
+      .finally(() => setAuditLoading(false));
+  }, [token, activeTab, auditRoleFilter]);
 
   useEffect(() => {
     if (!token) {
@@ -104,7 +173,7 @@ export function AdminDashboard() {
       .catch(() => setGuests([]));
   }, [token, activeTab]);
 
-  const roomStatuses: RoomStatus[] = ROOMS.map((room) => ({
+  const roomStatuses: RoomStatus[] = rooms.map((room) => ({
     roomId: room.id,
     name: room.name,
     type: room.type.toUpperCase(),
@@ -187,6 +256,8 @@ export function AdminDashboard() {
         console.error('Failed to create room');
         return;
       }
+      onRoomsUpdated?.();
+      toast.success('Room added. It will now appear on Home and Rooms.');
       // Reset form on success
       setRoomForm({
         name: '',
@@ -221,23 +292,26 @@ export function AdminDashboard() {
         {/* Tabs row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="inline-flex rounded-full bg-[#F1F5F9] dark:bg-[#0A2342]/60 p-1 border border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
-            {['reservations', 'availability', 'guests', 'add-room'].map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab as typeof activeTab)}
-                className={`px-4 py-2 text-xs font-semibold rounded-full uppercase tracking-widest transition-colors ${
-                  activeTab === tab
-                    ? 'bg-[#0A2342] text-[#F9F7F2]'
-                    : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-white/70 dark:hover:bg-[#0A2342]/40'
-                }`}
-              >
-                {tab === 'reservations' && 'Reservations'}
-                {tab === 'availability' && 'Availability'}
-                {tab === 'guests' && 'Guests'}
-                {tab === 'add-room' && '+ Add Room'}
-              </button>
-            ))}
+            {['reservations', 'availability', 'guests', 'add-room', 'audit-logs'].map((tab) => {
+              const tabLabel = tab === 'reservations' ? 'Reservations' : tab === 'availability' ? 'Availability' : tab === 'guests' ? 'Users' : tab === 'add-room' ? '+ Add Room' : 'Audit Logs';
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab as typeof activeTab);
+                    recordAudit('tab_view', `Viewed: ${tabLabel}`);
+                  }}
+                  className={`px-4 py-2 text-xs font-semibold rounded-full uppercase tracking-widest transition-colors ${
+                    activeTab === tab
+                      ? 'bg-[#0A2342] text-[#F9F7F2]'
+                      : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-white/70 dark:hover:bg-[#0A2342]/40'
+                  }`}
+                >
+                  {tabLabel}
+                </button>
+              );
+            })}
           </div>
 
           {activeTab === 'reservations' && (
@@ -311,35 +385,35 @@ export function AdminDashboard() {
         {activeTab === 'availability' && (
           <div className="flex flex-col md:flex-row md:justify-between gap-8 items-start">
             <div className="flex-shrink-0">
-              <div className="w-full max-w-md bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-7">
-                <h3 className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-4">Select Date</h3>
-                <div className="rounded-2xl border border-[#E2E8F0] bg-[#F9FBFF] dark:bg-[#0A2342] px-8 py-5">
-                  <div className="flex items-center justify-between mb-3">
+              <div className="w-full max-w-lg bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-8">
+                <h3 className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-5">Select Date</h3>
+                <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#F9F7F2]/20 bg-[#F9FBFF] dark:bg-[#0A2342] px-10 py-6 text-[#0A2342] dark:text-[#F9F7F2]">
+                  <div className="flex items-center justify-between mb-4">
                     <button
                       type="button"
                       onClick={previousMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
                     >
-                      <ChevronLeft size={18} />
+                      <ChevronLeft size={22} />
                     </button>
-                    <span className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+                    <span className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
                       {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear()}
                     </span>
                     <button
                       type="button"
                       onClick={nextMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
                     >
-                      <ChevronRight size={18} />
+                      <ChevronRight size={22} />
                     </button>
                   </div>
-                  <table className="w-full text-center text-sm">
+                  <table className="w-full text-center text-base">
                     <thead>
                       <tr>
                         {dayNames.map((day) => (
                           <th
                             key={day}
-                            className="pb-1 font-semibold text-[11px] text-[#0A2342] dark:text-[#F9F7F2]"
+                            className="pb-2 font-semibold text-xs text-[#0A2342] dark:text-[#F9F7F2]"
                           >
                             {day}
                           </th>
@@ -350,9 +424,9 @@ export function AdminDashboard() {
                       {weeks.map((week, wi) => (
                         <tr key={wi}>
                           {week.map((day, di) => (
-                            <td key={di} className="py-0.5">
+                            <td key={di} className="py-1">
                               {day === null ? (
-                                <span className="inline-block h-7 w-7" />
+                                <span className="inline-block h-10 w-10" />
                               ) : (
                                 <button
                                   type="button"
@@ -361,7 +435,7 @@ export function AdminDashboard() {
                                       new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day)
                                     )
                                   }
-                                  className={`h-7 w-7 inline-flex items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+                                  className={`h-10 w-10 inline-flex items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                                     day === selectedDate.getDate()
                                       ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
                                       : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#0A2342]/10 dark:hover:bg-[#F9F7F2]/10'
@@ -377,14 +451,14 @@ export function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-4 pt-3 flex justify-center gap-6">
+                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-5 pt-4 flex justify-center gap-6">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="text-xs font-semibold text-green-600 dark:text-green-400">Available</span>
+                    <div className="w-4 h-4 rounded-full bg-green-500" />
+                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">Available</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <span className="text-xs font-semibold text-red-600 dark:text-red-400">Occupied</span>
+                    <div className="w-4 h-4 rounded-full bg-red-500" />
+                    <span className="text-sm font-semibold text-red-600 dark:text-red-400">Occupied</span>
                   </div>
                 </div>
               </div>
@@ -393,11 +467,11 @@ export function AdminDashboard() {
               <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">
                 Room Status for {formatDateHeader(selectedDate)}
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {roomStatuses.map((room) => (
                   <div
                     key={room.roomId}
-                    className={`rounded-lg p-4 flex items-center justify-between border ${
+                    className={`rounded-lg p-5 flex items-center justify-between border ${
                       room.status === 'available'
                         ? 'bg-[#E8F5E9] dark:bg-[#0A2342]/40 border-green-200 dark:border-green-900/30'
                         : 'bg-[#FFEBEE] dark:bg-[#3d1f1f]/40 border-red-200 dark:border-red-900/30'
@@ -442,11 +516,11 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {/* Guests tab */}
+        {/* Users tab */}
         {activeTab === 'guests' && (
           <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
             <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex items-center justify-between gap-4">
-              <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Guests</h2>
+              <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Users</h2>
               <div className="relative w-full max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
                 <input
@@ -485,6 +559,78 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {/* Audit Logs tab */}
+        {activeTab === 'audit-logs' && (
+          <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Audit Logs</h2>
+                <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mt-1">Backtrack guests, staff, and admin actions — dates in local time</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="audit-role-filter" className="text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider">Filter by role</label>
+                <select
+                  id="audit-role-filter"
+                  value={auditRoleFilter}
+                  onChange={(e) => setAuditRoleFilter(e.target.value)}
+                  className="bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-2 px-3 rounded-lg text-sm text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50"
+                >
+                  <option value="">All (Guest, Staff, Admin)</option>
+                  <option value="guest">Guest only</option>
+                  <option value="staff">Staff only</option>
+                  <option value="admin">Admin only</option>
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              {auditLoading ? (
+                <div className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60">Loading audit logs...</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2]">
+                      <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">When</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Who</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Action</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">What happened</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60 text-sm">
+                          {auditRoleFilter ? `No audit logs for ${auditRoleFilter}. Try "All".` : 'No audit logs yet. Guests (login, signup, bookings), staff (login, view reservations/availability), and admin actions are recorded here.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      auditLogs.map((log) => {
+                        const relative = getRelativeTime(log.createdAt);
+                        const roleLabel = log.role ? log.role.charAt(0).toUpperCase() + log.role.slice(1) : '—';
+                        return (
+                          <tr key={log._id} className="border-t border-[#E2E8F0] dark:border-[#1f2937] hover:bg-[#F9F7F2]/30 dark:hover:bg-[#0A2342]/20">
+                            <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2]">
+                              <span className="block font-medium">{formatAuditDate(log.createdAt)}</span>
+                              {relative && <span className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">{relative}</span>}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2]">
+                              <span className="font-medium">{log.userName || log.userEmail}</span>
+                              {log.userName && log.userEmail && <span className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 block text-xs">{log.userEmail}</span>}
+                            </td>
+                            <td className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{roleLabel}</td>
+                            <td className="px-6 py-3 text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2]">{getAuditActionLabel(log.action)}</td>
+                            <td className="px-6 py-3 text-sm text-[#0A2342]/90 dark:text-[#F9F7F2]/90">{log.details || '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Add Room tab */}
         {activeTab === 'add-room' && (
           <div className="max-w-3xl mx-auto bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-2xl shadow-xl p-8">
@@ -506,12 +652,18 @@ export function AdminDashboard() {
                   <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">
                     Type
                   </label>
-                  <input
-                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
-                    placeholder="Suite / Deluxe / Standard"
+                  <select
+                    className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50"
                     value={roomForm.type}
                     onChange={(e) => setRoomForm((prev) => ({ ...prev, type: e.target.value }))}
-                  />
+                  >
+                    <option value="">Select room type</option>
+                    <option value="standard">Standard</option>
+                    <option value="deluxe">Deluxe</option>
+                    <option value="suite">Suite</option>
+                    <option value="villa">Villa</option>
+                    <option value="cabin">Cabin</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">

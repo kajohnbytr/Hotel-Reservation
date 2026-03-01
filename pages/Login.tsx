@@ -16,6 +16,8 @@ export function Login({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState<number | null>(null);
 
   // Forgot password
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -35,6 +37,24 @@ export function Login({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showForgotModal]);
+
+  // Countdown when locked out
+  useEffect(() => {
+    if (lockoutSecondsLeft == null || lockoutSecondsLeft <= 0) return;
+    const t = setInterval(() => {
+      setLockoutSecondsLeft((s) => {
+        if (s == null) return null;
+        const next = Math.max(0, s - 1);
+        if (next === 0) {
+          setError('');
+          setRemainingAttempts(null);
+          return null;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lockoutSecondsLeft]);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +143,7 @@ export function Login({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (lockoutSecondsLeft != null && lockoutSecondsLeft > 0) return;
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/users/login`, {
@@ -132,10 +153,24 @@ export function Login({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.message === 'Invalid email or password' ? 'Not valid account' : data.message || 'Not valid account');
+        if (res.status === 429) {
+          setLockoutSecondsLeft(typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : 10 * 60);
+          setError(data.message || 'Too many failed attempts. You can try again in 10 minutes.');
+          setRemainingAttempts(0);
+        } else {
+          setRemainingAttempts(typeof data.remainingAttempts === 'number' ? data.remainingAttempts : null);
+          if (data.lockedUntil && data.retryAfterSeconds) {
+            setLockoutSecondsLeft(data.retryAfterSeconds);
+            setError(data.message || 'Account temporarily locked. Try again later.');
+          } else {
+            setError(data.message === 'Invalid email or password' ? 'Invalid email or password' : data.message || 'Not valid account');
+          }
+        }
         setIsLoading(false);
         return;
       }
+      setRemainingAttempts(null);
+      setLockoutSecondsLeft(null);
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'User';
       const user = { id: String(data._id), email: data.email, name, role: (data.role === 'staff' ? 'staff' : 'guest') as 'guest' | 'staff' };
       localStorage.setItem('aurora_user', JSON.stringify(user));
@@ -171,16 +206,11 @@ export function Login({
               type="email"
               required
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); }}
+              onChange={(e) => { setEmail(e.target.value); setError(''); setRemainingAttempts(null); }}
               placeholder="you@gmail.com"
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
             />
           </div>
-          {error && (
-            <p className="text-red-600 dark:text-red-400 text-sm text-center font-medium" role="alert">
-              {error}
-            </p>
-          )}
           <div>
             <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Password</label>
             <div className="relative" style={{ position: 'relative' }}>
@@ -212,14 +242,33 @@ export function Login({
                 Forgot password?
               </button>
             </div>
+            {error && (
+              <div className="text-center space-y-1 mt-3" role="alert">
+                <p className="text-red-600 dark:text-red-400 text-sm font-medium">{error}</p>
+                {remainingAttempts != null && remainingAttempts > 0 && (
+                  <p className="text-[#0A2342]/70 dark:text-[#F9F7F2]/70 text-xs">
+                    {remainingAttempts} attempt{remainingAttempts !== 1 ? 's' : ''} left
+                  </p>
+                )}
+                {lockoutSecondsLeft != null && lockoutSecondsLeft > 0 && (
+                  <p className="text-amber-600 dark:text-amber-400 text-xs font-medium">
+                    You can try again in {Math.floor(lockoutSecondsLeft / 60)}:{String(lockoutSecondsLeft % 60).padStart(2, '0')}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || (lockoutSecondsLeft != null && lockoutSecondsLeft > 0)}
             className="w-full bg-[#0A2342] hover:bg-[#153a66] text-[#F9F7F2] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] font-bold py-4 transition-colors disabled:opacity-70 uppercase tracking-widest text-xs rounded-lg"
           >
-            {isLoading ? 'Processing...' : 'Enter'}
+            {lockoutSecondsLeft != null && lockoutSecondsLeft > 0
+              ? `Try again in ${Math.floor(lockoutSecondsLeft / 60)}:${String(lockoutSecondsLeft % 60).padStart(2, '0')}`
+              : isLoading
+                ? 'Processing...'
+                : 'Enter'}
           </button>
         </form>
 

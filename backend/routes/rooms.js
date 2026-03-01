@@ -1,5 +1,6 @@
 import express from 'express';
 import Room from '../models/room.js';
+import AuditLog from '../models/auditLog.js';
 import { protect } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 
@@ -21,6 +22,19 @@ router.post('/', protect, requireAdmin, async (req, res) => {
       imageUrl,
       amenities: Array.isArray(amenities) ? amenities : [],
     });
+    try {
+      const adminName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail: req.user.email,
+        userName: adminName,
+        action: 'room_added',
+        details: `Added room: ${name}`,
+      });
+      console.log('[Audit] room_added recorded for', name);
+    } catch (err) {
+      console.error('[Audit] Failed to record room_added:', err.message);
+    }
     res.status(201).json(room);
   } catch (error) {
     console.error('Create room error:', error);

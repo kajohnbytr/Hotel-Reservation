@@ -1,10 +1,10 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ROOMS, getBookings, User } from '../lib/store';
+import { getBookings, User, Room } from '../lib/store';
 import { BarChart3, Shield } from 'lucide-react';
 import { formatDate } from '../lib/utils';
 
-export function Dashboard({ user }: { user: User | null }) {
+export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] }) {
   const allBookings = getBookings();
   const userBookings = user ? allBookings.filter(b => b.userId === user.id).reverse() : [];
   return (
@@ -35,14 +35,15 @@ export function Dashboard({ user }: { user: User | null }) {
                 <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mb-6 font-serif text-lg">You have no upcoming stays.</p>
               </div>
             ) : (
-              userBookings.map((booking) => {
-                const room = ROOMS.find(r => r.id === booking.roomId);
+              <div className="space-y-8">
+              {userBookings.map((booking) => {
+                const room = rooms.find(r => r.id === booking.roomId);
                 return (
                   <motion.div
                     key={booking.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-[#0A2342] text-[#F9F7F2] flex flex-col md:flex-row overflow-hidden shadow-lg"
+                    className="bg-[#0A2342] text-[#F9F7F2] flex flex-col md:flex-row overflow-hidden shadow-lg rounded-lg"
                   >
                     <div className="md:w-64 h-48 md:h-auto relative">
                       <img
@@ -74,7 +75,8 @@ export function Dashboard({ user }: { user: User | null }) {
                     </div>
                   </motion.div>
                 );
-              })
+              })}
+              </div>
             )
           ) : (
             <div className="bg-white dark:bg-[#0A2342] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 p-12 text-center">

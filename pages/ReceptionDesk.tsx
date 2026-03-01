@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
-import { ROOMS } from '../lib/store';
+import { Room } from '../lib/store';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -23,13 +23,13 @@ interface RoomStatus {
   status: 'available' | 'occupied';
 }
 
-export function ReceptionDesk() {
+export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
   const [activeTab, setActiveTab] = useState<'reservations' | 'room-availability'>('reservations');
   const [searchQuery, setSearchQuery] = useState('');
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 1, 20)); // Feb 20, 2026
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
 
@@ -73,7 +73,7 @@ export function ReceptionDesk() {
       .catch(() => setOccupiedRoomIds([]));
   }, [token, activeTab, selectedDate]);
 
-  const roomStatuses: RoomStatus[] = ROOMS.map((room) => ({
+  const roomStatuses: RoomStatus[] = rooms.map((room) => ({
     roomId: room.id,
     name: room.name,
     type: room.type.toUpperCase(),
@@ -219,35 +219,35 @@ export function ReceptionDesk() {
         {activeTab === 'room-availability' && (
           <div className="flex flex-col md:flex-row md:justify-between gap-8 items-start">
             <div className="flex-shrink-0">
-              <div className="w-full max-w-sm bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg p-6">
-                <h3 className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-4">Select Date</h3>
-                <div className="rounded-2xl border border-[#E2E8F0] bg-[#F9FBFF] dark:bg-[#0A2342] px-6 py-4">
-                  <div className="flex items-center justify-between mb-3">
+              <div className="w-full max-w-md bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-8">
+                <h3 className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-5">Select Date</h3>
+                <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#F9F7F2]/20 bg-[#F9FBFF] dark:bg-[#0A2342] px-8 py-5 text-[#0A2342] dark:text-[#F9F7F2]">
+                  <div className="flex items-center justify-between mb-4">
                     <button
                       type="button"
                       onClick={previousMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
                     >
-                      <ChevronLeft size={18} />
+                      <ChevronLeft size={22} />
                     </button>
-                    <span className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+                    <span className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
                       {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear()}
                     </span>
                     <button
                       type="button"
                       onClick={nextMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1"
+                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
                     >
-                      <ChevronRight size={18} />
+                      <ChevronRight size={22} />
                     </button>
                   </div>
-                  <table className="w-full text-center text-xs">
+                  <table className="w-full text-center text-sm">
                     <thead>
                       <tr>
                         {dayNames.map((day) => (
                           <th
                             key={day}
-                            className="pb-1 font-semibold text-[11px] text-[#0A2342] dark:text-[#F9F7F2]"
+                            className="pb-2 font-semibold text-xs text-[#0A2342] dark:text-[#F9F7F2]"
                           >
                             {day}
                           </th>
@@ -258,9 +258,9 @@ export function ReceptionDesk() {
                       {weeks.map((week, wi) => (
                         <tr key={wi}>
                           {week.map((day, di) => (
-                            <td key={di} className="py-0.5">
+                            <td key={di} className="py-1">
                               {day === null ? (
-                                <span className="inline-block h-7 w-7" />
+                                <span className="inline-block h-10 w-10" />
                               ) : (
                                 <button
                                   type="button"
@@ -269,7 +269,7 @@ export function ReceptionDesk() {
                                       new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day)
                                     )
                                   }
-                                  className={`h-7 w-7 inline-flex items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+                                  className={`h-10 w-10 inline-flex items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                                     day === selectedDate.getDate()
                                       ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
                                       : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#0A2342]/10 dark:hover:bg-[#F9F7F2]/10'
@@ -285,14 +285,14 @@ export function ReceptionDesk() {
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-4 pt-3 flex justify-center gap-6">
+                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-5 pt-4 flex justify-center gap-6">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="text-xs font-semibold text-green-600 dark:text-green-400">Available</span>
+                    <div className="w-4 h-4 rounded-full bg-green-500" />
+                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">Available</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <span className="text-xs font-semibold text-red-600 dark:text-red-400">Occupied</span>
+                    <div className="w-4 h-4 rounded-full bg-red-500" />
+                    <span className="text-sm font-semibold text-red-600 dark:text-red-400">Occupied</span>
                   </div>
                 </div>
               </div>
@@ -301,11 +301,11 @@ export function ReceptionDesk() {
               <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">
                 Room Status for {formatDateHeader(selectedDate)}
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {roomStatuses.map((room) => (
                   <div
                     key={room.roomId}
-                    className={`rounded-lg p-4 flex items-center justify-between border ${
+                    className={`rounded-lg p-5 flex items-center justify-between border ${
                       room.status === 'available'
                         ? 'bg-[#E8F5E9] dark:bg-[#0A2342]/40 border-green-200 dark:border-green-900/30'
                         : 'bg-[#FFEBEE] dark:bg-[#3d1f1f]/40 border-red-200 dark:border-red-900/30'

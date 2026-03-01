@@ -1,0 +1,46 @@
+/* Dark mode overrides for react-day-picker so calendar is visible on dark backgrounds */
+.dark .rdp {
+  color: #F9F7F2;
+  --rdp-accent-color: #D4AF37;
+  --rdp-background-color: rgba(212, 175, 55, 0.2);
+  --rdp-selected-color: #0A2342;
+}
+
+.dark .rdp-button,
+.dark .rdp-caption_label,
+.dark .rdp-head_cell,
+.dark .rdp-day {
+  color: #F9F7F2 !important;
+}
+
+.dark .rdp-day:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: rgba(212, 175, 55, 0.15);
+  color: #F9F7F2;
+}
+
+.dark .rdp-day_outside {
+  color: rgba(249, 247, 242, 0.4) !important;
+}
+
+.dark .rdp-nav_button {
+  color: #F9F7F2 !important;
+}
+
+.dark .rdp-nav_button:hover:not([disabled]) {
+  background-color: rgba(212, 175, 55, 0.2);
+  color: #F9F7F2;
+}
+
+.dark .rdp-dropdown {
+  background-color: #05152a;
+  color: #F9F7F2;
+  border-color: rgba(249, 247, 242, 0.2);
+}
+
+.dark .rdp-months,
+.dark .rdp-month,
+.dark .rdp-table,
+.dark .rdp-tbody,
+.dark .rdp-cell {
+  background: transparent !important;
+}

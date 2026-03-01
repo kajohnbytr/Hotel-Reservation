@@ -103,7 +103,7 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
           onClick={() => setIsDetailsOpen(false)}
         >
           <div
-            className="relative w-[900px] max-w-[90vw] h-[500px] bg-[#F9F7F2] text-[#0A2342] rounded-xl shadow-2xl border border-[#D4AF37]/30 overflow-hidden"
+            className="relative w-[900px] max-w-[90vw] h-[500px] bg-[#F9F7F2] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2] rounded-xl shadow-2xl border border-[#D4AF37]/30 overflow-hidden"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -112,7 +112,7 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
               <button
                 type="button"
                 onClick={() => setIsDetailsOpen(false)}
-                className="p-2 rounded-full border border-[#0A2342]/10 text-[#0A2342]/60 hover:text-[#0A2342] hover:bg-[#0A2342]/5 transition-colors"
+                className="p-2 rounded-full border border-[#0A2342]/10 dark:border-[#F9F7F2]/20 text-[#0A2342]/60 dark:text-[#F9F7F2]/70 hover:text-[#0A2342] dark:hover:text-[#F9F7F2] hover:bg-[#0A2342]/5 dark:hover:bg-[#F9F7F2]/10 transition-colors"
                 aria-label="Close details"
               >
                 <X className="w-4 h-4" />
@@ -127,19 +127,19 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                 />
               </div>
               <div className="flex flex-col">
-                <div className="p-8 border-b border-[#0A2342]/10">
+                <div className="p-8 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
                   <p className="text-xs uppercase tracking-widest text-[#D4AF37] font-semibold">
                     {room.type} Collection
                   </p>
                   <h4 className="text-2xl font-serif mt-1">{room.name}</h4>
                 </div>
                 <div className="p-8 flex-1 space-y-6">
-                  <div className="flex items-center gap-6 text-sm text-[#0A2342]/70">
+                  <div className="flex items-center gap-6 text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/70">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-[#D4AF37]" />
                       {room.maxGuests} Guests
                     </div>
-                    <span className="text-[#0A2342]/30">|</span>
+                    <span className="text-[#0A2342]/30 dark:text-[#F9F7F2]/30">|</span>
                     <div className="flex items-center gap-2">
                       <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-[#D4AF37] text-[10px] text-[#D4AF37]">
                         ☐
@@ -148,18 +148,18 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 font-semibold">
+                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 dark:text-[#F9F7F2]/60 font-semibold">
                       About this room
                     </p>
-                    <p className="text-sm mt-3 text-[#0A2342]/80 leading-relaxed">
+                    <p className="text-sm mt-3 text-[#0A2342]/80 dark:text-[#F9F7F2]/90 leading-relaxed">
                       {room.description}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 font-semibold mb-3">
+                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 dark:text-[#F9F7F2]/60 font-semibold mb-3">
                       Amenities
                     </p>
-                    <div className="grid grid-cols-2 gap-3 text-sm text-[#0A2342]/80">
+                    <div className="grid grid-cols-2 gap-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/90">
                       {room.amenities.map((amenity, i) => (
                         <div key={i} className="flex items-center gap-2">
                           <span className="h-1.5 w-1.5 rounded-full bg-[#D4AF37]" />
@@ -169,9 +169,9 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                     </div>
                   </div>
                 </div>
-                <div className="border-t border-[#0A2342]/10 p-6 flex items-center justify-between">
+                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 p-6 flex items-center justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 font-semibold">
+                    <p className="text-xs uppercase tracking-widest text-[#0A2342]/50 dark:text-[#F9F7F2]/60 font-semibold">
                       Price per night
                     </p>
                     <p className="text-2xl font-semibold text-[#D4AF37]">₱{room.price}</p>
@@ -179,7 +179,7 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                   <button
                     type="button"
                     onClick={() => onBook(room.id)}
-                    className="px-6 py-3 bg-[#0A2342] text-[#F9F7F2] hover:bg-[#153a66] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+                    className="px-6 py-3 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342] hover:bg-[#153a66] dark:hover:bg-[#C99E2E] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
                   >
                     Reserve Now
                   </button>

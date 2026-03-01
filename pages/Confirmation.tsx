@@ -1,16 +1,17 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Booking, ROOMS } from '../lib/store';
+import { Booking, Room } from '../lib/store';
 import { formatDate } from '../lib/utils';
 import { Check, Download } from 'lucide-react';
 
 interface ConfirmationPageProps {
   booking: Booking;
+  rooms: Room[];
   onDashboard: () => void;
 }
 
-export function ConfirmationPage({ booking, onDashboard }: ConfirmationPageProps) {
-  const room = ROOMS.find(r => r.id === booking.roomId);
+export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPageProps) {
+  const room = rooms.find(r => r.id === booking.roomId);
 
   return (
     <div className="max-w-2xl mx-auto py-16 px-6">

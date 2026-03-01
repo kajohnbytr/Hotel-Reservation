@@ -9,6 +9,35 @@ export interface Room {
   maxGuests: number;
 }
 
+/** API room shape from GET /api/rooms (MongoDB) */
+export interface ApiRoom {
+  _id: string;
+  name: string;
+  type: string;
+  pricePerNight: number;
+  maxGuests: number;
+  description?: string;
+  imageUrl?: string;
+  amenities?: string[];
+}
+
+const ROOM_TYPES: Room['type'][] = ['standard', 'deluxe', 'suite', 'villa', 'cabin'];
+
+export function mapApiRoomToRoom(api: ApiRoom): Room {
+  const typeLower = (api.type || '').toLowerCase();
+  const type: Room['type'] = ROOM_TYPES.includes(typeLower as Room['type']) ? (typeLower as Room['type']) : 'standard';
+  return {
+    id: api._id,
+    name: api.name,
+    type,
+    price: api.pricePerNight,
+    image: api.imageUrl || 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=1080',
+    description: api.description || '',
+    amenities: Array.isArray(api.amenities) ? api.amenities : [],
+    maxGuests: api.maxGuests ?? 2,
+  };
+}
+
 export const ROOMS: Room[] = [
   {
     id: '1',
@@ -131,3 +160,26 @@ export const logoutUser = () => {
   localStorage.removeItem('aurora_token');
   localStorage.removeItem('aurora_refresh_token');
 };
+
+/** Decode JWT payload without verification (client-side expiry check only). */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const base64 = token.split('.')[1];
+    if (!base64) return null;
+    const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json) as { exp?: number };
+  } catch {
+    return null;
+  }
+}
+
+/** True if refresh token is missing or expired (session over). */
+export function isSessionExpired(): boolean {
+  const refreshToken = localStorage.getItem('aurora_refresh_token');
+  if (!refreshToken) return true;
+  const payload = decodeJwtPayload(refreshToken);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const bufferSec = 60;
+  return payload.exp < nowSec + bufferSec;
+}
