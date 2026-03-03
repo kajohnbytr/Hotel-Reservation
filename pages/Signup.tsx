@@ -5,12 +5,16 @@ import { validatePassword } from '../lib/passwordPolicy';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; onNavigateToLogin: () => void }) {
+// onSignup now receives the registered email so the parent can
+// pass it to <VerifyEmail pendingEmail={email} />
+export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: { onSignup: (email: string) => void; onNavigateToLogin: () => void; onNavigateToStaffLogin?: () => void }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showTermsError, setShowTermsError] = useState(false);
@@ -30,20 +34,13 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
 
   const nameHasNumbers = (s: string) => /\d/.test(s);
 
-  const isValidEmail = (value: string) => {
-    if (!value.trim()) return true;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-  };
-  const showEmailInvalid = email.length > 0 && !isValidEmail(email);
+  // Show mismatch error only when user has typed something in confirm field
+  const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptedTerms) {
       setShowTermsError(true);
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setError('Please enter a valid email address.');
       return;
     }
     if (nameHasNumbers(firstName.trim())) {
@@ -57,6 +54,10 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
     const pwCheck = validatePassword(password);
     if (!pwCheck.valid) {
       setError(pwCheck.message || 'Password does not meet requirements.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
       return;
     }
     setError('');
@@ -78,7 +79,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
         setIsLoading(false);
         return;
       }
-      onSignup();
+      onSignup(email.trim());
     } catch {
       setError('Registration failed. Please try again.');
     } finally {
@@ -138,16 +139,11 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(''); }}
               placeholder="you@gmail.com"
-              className={`w-full bg-[#F9F7F2] dark:bg-[#05152a] border py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none transition-colors rounded-lg ${
-                showEmailInvalid ? 'border-red-500 dark:border-red-400 focus:border-red-500' : 'border-[#0A2342]/10 dark:border-[#F9F7F2]/10 focus:border-[#D4AF37]'
-              }`}
+              className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
             />
-            {showEmailInvalid && (
-              <p className="mt-1.5 text-xs text-red-600 dark:text-red-400" role="alert">
-                Please enter a valid email address.
-              </p>
-            )}
           </div>
+
+          {/* Password */}
           <div>
             <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Password</label>
             <div className="relative" style={{ position: 'relative' }}>
@@ -178,6 +174,49 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
             )}
           </div>
 
+          {/* Confirm Password */}
+          <div>
+            <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Confirm Password</label>
+            <div className="relative" style={{ position: 'relative' }}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                required
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+                placeholder="Re-enter your password"
+                minLength={8}
+                className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none transition-colors rounded-lg"
+                style={{
+                  borderColor: passwordMismatch
+                    ? '#f87171'
+                    : confirmPassword.length > 0 && password === confirmPassword
+                    ? '#4ade80'
+                    : undefined,
+                }}
+              />
+              <button
+                type="button"
+                tabIndex={0}
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '2.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+                className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#D4AF37]/50 transition-colors"
+                aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              >
+                {showConfirmPassword ? <EyeOff className="w-5 h-5 shrink-0" /> : <Eye className="w-5 h-5 shrink-0" />}
+              </button>
+            </div>
+            {passwordMismatch && (
+              <p className="mt-1.5 text-xs text-red-500 dark:text-red-400" role="alert">
+                Passwords do not match.
+              </p>
+            )}
+            {confirmPassword.length > 0 && !passwordMismatch && (
+              <p className="mt-1.5 text-xs text-green-600 dark:text-green-400">
+                Passwords match.
+              </p>
+            )}
+          </div>
+
           <div className="flex items-start gap-3 text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/70">
             <input
               id="terms"
@@ -193,7 +232,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
               required
             />
             <div className="leading-relaxed">
-              I agree to Aurora’s{" "}
+              I agree to Aurora's{" "}
               <button
                 type="button"
                 className="text-[#D4AF37] font-semibold hover:underline"
@@ -232,6 +271,16 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
               className="text-[#D4AF37] font-bold hover:underline"
             >
               Sign In
+            </button>
+          </p>
+          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm mt-2">
+            Staff access:{' '}
+            <button
+              type="button"
+              onClick={() => onNavigateToStaffLogin && onNavigateToStaffLogin()}
+              className="text-[#D4AF37] font-bold hover:underline"
+            >
+              Staff Portal
             </button>
           </p>
         </div>
@@ -287,7 +336,7 @@ export function Signup({ onSignup, onNavigateToLogin }: { onSignup: () => void; 
                   Cancellation Policy
                 </p>
                 <p className="mt-2 leading-relaxed">
-                  Cancellations within 48 hours of check-in may incur one night’s
+                  Cancellations within 48 hours of check-in may incur one night's
                   charge. Modifications are subject to availability.
                 </p>
               </div>
