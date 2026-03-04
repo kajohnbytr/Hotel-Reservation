@@ -11,7 +11,7 @@ const bookingSchema = new mongoose.Schema(
     guests: { type: Number, required: true, default: 1 },
     total: { type: Number, required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    status: { type: String, enum: ['confirmed', 'cancelled'], default: 'confirmed' },
+    status: { type: String, enum: ['confirmed', 'cancelled', 'pending_cancel'], default: 'confirmed' },
     txHash: String,
   },
   { timestamps: true }

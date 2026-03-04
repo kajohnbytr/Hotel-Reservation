@@ -10,7 +10,7 @@ const router = express.Router();
 const MAX_CONCURRENT_BOOKINGS = parseInt(process.env.MAX_CONCURRENT_BOOKINGS || '3', 10);
 const MAX_BOOKINGS_PER_DAY = parseInt(process.env.MAX_BOOKINGS_PER_DAY || '2', 10);
 
-// List bookings (for reception; optional search)
+// List bookings (for reception/admin; optional search across all guests)
 router.get('/', protect, async (req, res) => {
   try {
     const search = (req.query.search || '').toString().trim();
@@ -42,17 +42,50 @@ router.get('/', protect, async (req, res) => {
     const list = bookings.map((b) => ({
       id: b._id.toString(),
       guestName: b.guestName,
-      room: b.roomName,
+      roomId: b.roomId,
+      roomName: b.roomName,
       checkIn: b.checkIn.toISOString().split('T')[0],
       checkOut: b.checkOut.toISOString().split('T')[0],
       nights: b.nights,
       guests: b.guests,
       total: b.total,
+      status: b.status || 'confirmed',
       txHash: b.txHash || '',
     }));
     res.json(list);
   } catch (error) {
     console.error('List bookings error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// List bookings for the currently authenticated guest (Dashboard)
+router.get('/my', protect, async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      userId: req.user._id,
+      status: { $in: ['confirmed', 'pending_cancel'] },
+    })
+      .sort({ checkIn: -1 })
+      .lean();
+
+    const list = bookings.map((b) => ({
+      id: b._id.toString(),
+      guestName: b.guestName,
+      roomId: b.roomId,
+      roomName: b.roomName,
+      checkIn: b.checkIn.toISOString().split('T')[0],
+      checkOut: b.checkOut.toISOString().split('T')[0],
+      nights: b.nights,
+      guests: b.guests,
+      total: b.total,
+      status: b.status || 'confirmed',
+      txHash: b.txHash || '',
+    }));
+
+    res.json(list);
+  } catch (error) {
+    console.error('List my bookings error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
@@ -162,12 +195,14 @@ router.post('/', protect, async (req, res) => {
     res.status(201).json({
       id: booking._id.toString(),
       guestName: booking.guestName,
-      room: booking.roomName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
       checkIn: booking.checkIn.toISOString().split('T')[0],
       checkOut: booking.checkOut.toISOString().split('T')[0],
       nights: booking.nights,
       guests: booking.guests,
       total: booking.total,
+      status: booking.status || 'confirmed',
       txHash: booking.txHash || '',
     });
   } catch (error) {
@@ -275,6 +310,148 @@ router.get('/user/stats', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Booking stats error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Guest requests cancellation – booking enters pending_cancel until staff confirms
+router.post('/:id/request-cancel', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (booking.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only request cancellation for your own bookings.' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ message: 'This booking is already cancelled.' });
+    }
+
+    if (booking.status === 'pending_cancel') {
+      return res.status(200).json({
+        id: booking._id.toString(),
+        guestName: booking.guestName,
+        roomId: booking.roomId,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn.toISOString().split('T')[0],
+        checkOut: booking.checkOut.toISOString().split('T')[0],
+        nights: booking.nights,
+        guests: booking.guests,
+        total: booking.total,
+        status: booking.status,
+        txHash: booking.txHash || '',
+      });
+    }
+
+    booking.status = 'pending_cancel';
+    await booking.save();
+
+    try {
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const actorName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
+      const checkInStr = booking.checkIn.toISOString().split('T')[0];
+      const checkOutStr = booking.checkOut.toISOString().split('T')[0];
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail,
+        userName: actorName,
+        role: 'guest',
+        action: 'booking_cancel_request',
+        details: `Guest requested cancellation: ${booking.roomName}, ${checkInStr} to ${checkOutStr} (${booking.nights} night(s))`,
+      });
+    } catch (err) {
+      console.error('[Audit] booking_cancel_request:', err.message);
+    }
+
+    res.json({
+      id: booking._id.toString(),
+      guestName: booking.guestName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn.toISOString().split('T')[0],
+      checkOut: booking.checkOut.toISOString().split('T')[0],
+      nights: booking.nights,
+      guests: booking.guests,
+      total: booking.total,
+      status: booking.status,
+      txHash: booking.txHash || '',
+    });
+  } catch (error) {
+    console.error('Request cancel booking error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Staff/admin confirms cancellation – booking becomes cancelled
+router.post('/:id/cancel', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const isStaffOrAdmin = req.user.role === 'staff' || req.user.role === 'admin';
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({ message: 'Only staff or admin can confirm cancellations.' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(200).json({
+        id: booking._id.toString(),
+        guestName: booking.guestName,
+        roomId: booking.roomId,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn.toISOString().split('T')[0],
+        checkOut: booking.checkOut.toISOString().split('T')[0],
+        nights: booking.nights,
+        guests: booking.guests,
+        total: booking.total,
+        status: booking.status,
+        txHash: booking.txHash || '',
+      });
+    }
+
+    booking.status = 'cancelled';
+    await booking.save();
+
+    try {
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const actorName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
+      const checkInStr = booking.checkIn.toISOString().split('T')[0];
+      const checkOutStr = booking.checkOut.toISOString().split('T')[0];
+      const role = req.user.role || 'staff';
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail,
+        userName: actorName,
+        role,
+        action: 'booking_cancelled',
+        details: `Cancelled reservation: ${booking.roomName}, ${checkInStr} to ${checkOutStr} (${booking.nights} night(s))`,
+      });
+    } catch (err) {
+      console.error('[Audit] booking_cancelled:', err.message);
+    }
+
+    res.json({
+      id: booking._id.toString(),
+      guestName: booking.guestName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn.toISOString().split('T')[0],
+      checkOut: booking.checkOut.toISOString().split('T')[0],
+      nights: booking.nights,
+      guests: booking.guests,
+      total: booking.total,
+      status: booking.status,
+      txHash: booking.txHash || '',
+    });
+  } catch (error) {
+    console.error('Cancel booking error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });

@@ -3,9 +3,31 @@ import { motion } from 'motion/react';
 import { Check, X, Users } from 'lucide-react';
 import { Room } from '../lib/store';
 
-export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) => void }) {
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+export function RoomCard({
+  room,
+  onBook,
+  adminMode = false,
+  onRoomUpdated,
+}: {
+  room: Room;
+  onBook: (id: string) => void;
+  adminMode?: boolean;
+  onRoomUpdated?: (updated: Room) => void;
+}) {
   const [isImageOpen, setIsImageOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editName, setEditName] = useState(room.name);
+  const [editType, setEditType] = useState(room.type);
+  const [editPrice, setEditPrice] = useState(String(room.price));
+  const [editMaxGuests, setEditMaxGuests] = useState(String(room.maxGuests));
+  const [editDescription, setEditDescription] = useState(room.description);
+  const [editImage, setEditImage] = useState(room.image);
+  const [editAmenities, setEditAmenities] = useState(room.amenities.join(', '));
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     const shouldLock = isImageOpen || isDetailsOpen;
@@ -53,22 +75,44 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            type="button"
-            onClick={() => setIsDetailsOpen(true)}
-            className="py-4 border border-[#F9F7F2]/20 text-[#F9F7F2] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
-          >
-            Details
-          </button>
-          <button
-            type="button"
-            onClick={() => onBook(room.id)}
-            className="py-4 bg-[#D4AF37] text-[#0A2342] hover:bg-[#e6c55b] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
-          >
-            Reserve
-          </button>
-        </div>
+        {adminMode ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditName(room.name);
+                setEditType(room.type);
+                setEditPrice(String(room.price));
+                setEditMaxGuests(String(room.maxGuests));
+                setEditDescription(room.description);
+                setEditImage(room.image);
+                setEditAmenities(room.amenities.join(', '));
+                setEditError('');
+                setIsEditOpen(true);
+              }}
+              className="w-full py-4 bg-[#D4AF37] text-[#0A2342] hover:bg-[#e6c55b] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+            >
+              Edit details
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen(true)}
+              className="py-4 border border-[#F9F7F2]/20 text-[#F9F7F2] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              onClick={() => onBook(room.id)}
+              className="py-4 bg-[#D4AF37] text-[#0A2342] hover:bg-[#e6c55b] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+            >
+              Reserve
+            </button>
+          </div>
+        )}
       </div>
 
       {isImageOpen && (
@@ -176,16 +220,226 @@ export function RoomCard({ room, onBook }: { room: Room; onBook: (id: string) =>
                     </p>
                     <p className="text-2xl font-semibold text-[#D4AF37]">₱{room.price}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onBook(room.id)}
-                    className="px-6 py-3 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342] hover:bg-[#153a66] dark:hover:bg-[#C99E2E] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
-                  >
-                    Reserve Now
-                  </button>
+                  {adminMode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditName(room.name);
+                        setEditType(room.type);
+                        setEditPrice(String(room.price));
+                        setEditMaxGuests(String(room.maxGuests));
+                        setEditDescription(room.description);
+                        setEditImage(room.image);
+                        setEditAmenities(room.amenities.join(', '));
+                        setEditError('');
+                        setIsEditOpen(true);
+                      }}
+                      className="px-6 py-3 bg-[#D4AF37] text-[#0A2342] hover:bg-[#e6c55b] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+                    >
+                      Edit details
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onBook(room.id)}
+                      className="px-6 py-3 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342] hover:bg-[#153a66] dark:hover:bg-[#C99E2E] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+                    >
+                      Reserve Now
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {adminMode && isEditOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6"
+          onClick={() => !editSaving && setIsEditOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#D4AF37]/40 rounded-2xl shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">
+                Edit room details
+              </h3>
+              <button
+                type="button"
+                onClick={() => !editSaving && setIsEditOpen(false)}
+                className="text-[#0A2342]/60 dark:text-[#F9F7F2]/60 hover:text-[#D4AF37]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setEditError('');
+                const token = localStorage.getItem('aurora_token');
+                if (!token) {
+                  setEditError('You are not authorized to edit rooms.');
+                  return;
+                }
+                setEditSaving(true);
+                try {
+                  const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(room.id)}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                      name: editName,
+                      type: editType,
+                      pricePerNight: Number(editPrice),
+                      maxGuests: Number(editMaxGuests) || room.maxGuests,
+                      description: editDescription,
+                      imageUrl: editImage,
+                      amenities: editAmenities
+                        .split(',')
+                        .map((a) => a.trim())
+                        .filter(Boolean),
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    setEditError(data.message || 'Failed to update room.');
+                    setEditSaving(false);
+                    return;
+                  }
+
+                  const updated: Room = {
+                    ...room,
+                    name: editName,
+                    type: editType as Room['type'],
+                    price: Number(editPrice),
+                    maxGuests: Number(editMaxGuests) || room.maxGuests,
+                    description: editDescription,
+                    image: editImage,
+                    amenities: editAmenities
+                      .split(',')
+                      .map((a) => a.trim())
+                      .filter(Boolean),
+                  };
+                  onRoomUpdated?.(updated);
+                  setIsEditOpen(false);
+                  setEditSaving(false);
+                } catch (err) {
+                  console.error('Update room error:', err);
+                  setEditError('Failed to update room. Please try again.');
+                  setEditSaving(false);
+                }
+              }}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                    Name
+                  </label>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                    Type
+                  </label>
+                  <input
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value as Room['type'])}
+                    className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                    Price per night (₱)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                    Max guests
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editMaxGuests}
+                    onChange={(e) => setEditMaxGuests(e.target.value)}
+                    className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                  Image URL
+                </label>
+                <input
+                  value={editImage}
+                  onChange={(e) => setEditImage(e.target.value)}
+                  className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                  Description
+                </label>
+                <textarea
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-widest mb-1">
+                  Amenities (comma separated)
+                </label>
+                <input
+                  value={editAmenities}
+                  onChange={(e) => setEditAmenities(e.target.value)}
+                  className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
+                />
+              </div>
+              {editError && (
+                <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                  {editError}
+                </p>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => !editSaving && setIsEditOpen(false)}
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg border border-[#0A2342]/30 dark:border-[#F9F7F2]/30 text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#0A2342]/5 dark:hover:bg-[#F9F7F2]/10"
+                  disabled={editSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg bg-[#0A2342] text-[#F9F7F2] hover:bg-[#153a66] disabled:opacity-70"
+                >
+                  {editSaving ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

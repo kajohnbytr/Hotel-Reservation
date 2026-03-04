@@ -29,7 +29,7 @@ interface GuestRow {
   name: string;
   email: string;
   role: string;
-  lastActivity?: string;
+  lastActivity?: string | null;
   minutesAgo?: number | null;
   isOnline?: boolean;
 }
@@ -178,13 +178,17 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
       
       const users = Array.isArray(usersData) ? usersData : [];
       const onlineUsers = (onlineData?.users || []).reduce((acc: Record<string, any>, u: any) => {
-        acc[u.email] = { lastActivity: u.lastActivity, minutesAgo: u.minutesAgo, isOnline: u.isOnline };
+        acc[u.email] = {
+          lastActivity: u.lastActivity,
+          minutesAgo: typeof u.minutesAgo === 'number' ? u.minutesAgo : null,
+          isOnline: !!u.isOnline,
+        };
         return acc;
       }, {});
       const mergedGuests = users.map((u: any) => ({
         ...u,
-        lastActivity: onlineUsers[u.email]?.lastActivity,
-        minutesAgo: onlineUsers[u.email]?.minutesAgo,
+        lastActivity: onlineUsers[u.email]?.lastActivity ?? null,
+        minutesAgo: onlineUsers[u.email]?.minutesAgo ?? null,
         isOnline: onlineUsers[u.email]?.isOnline ?? false,
       }));
       setGuests(mergedGuests);
@@ -586,28 +590,33 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                     <tr key={g.id} className="border-t border-[#E2E8F0] dark:border-[#1f2937]">
                       <td className="px-6 py-3 text-sm">
                         <div className="flex items-center gap-2">
-                          {g.isOnline ? (
-                            <div 
-                              style={{ 
-                                width: '12px', 
-                                height: '12px', 
-                                backgroundColor: '#22c55e', 
+                          {/* Treat user as actively online only if last activity was < 1 minute ago */}
+                          {g.minutesAgo != null && g.minutesAgo === 0 ? (
+                            <span
+                              style={{
+                                width: '12px',
+                                height: '12px',
+                                backgroundColor: '#22c55e',
                                 borderRadius: '50%',
-                                display: 'inline-block'
-                              }} 
-                              title={`Online - ${g.minutesAgo === 0 ? 'Just now' : `${g.minutesAgo} min ago`}`}
-                            ></div>
+                                display: 'inline-block',
+                              }}
+                              title="Online • active within the last minute"
+                            />
                           ) : (
-                            <div 
-                              style={{ 
-                                width: '12px', 
-                                height: '12px', 
-                                border: '2px solid #9ca3af', 
+                            <span
+                              style={{
+                                width: '12px',
+                                height: '12px',
+                                backgroundColor: '#ef4444',
                                 borderRadius: '50%',
-                                display: 'inline-block'
-                              }} 
-                              title="Offline"
-                            ></div>
+                                display: 'inline-block',
+                              }}
+                              title={
+                                g.lastActivity
+                                  ? `Offline • last seen ${getRelativeTime(g.lastActivity) || formatAuditDate(g.lastActivity)}`
+                                  : 'Offline'
+                              }
+                            />
                           )}
                         </div>
                       </td>
@@ -618,7 +627,12 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                         {g.role}
                       </td>
                       <td className="px-6 py-3 text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
-                        {g.minutesAgo === 0 ? 'Just now' : g.minutesAgo ? `${g.minutesAgo} min ago` : '—'}
+                        {g.lastActivity
+                          ? (() => {
+                              const rel = getRelativeTime(g.lastActivity);
+                              return rel || formatAuditDate(g.lastActivity);
+                            })()
+                          : '—'}
                       </td>
                     </tr>
                   ))}

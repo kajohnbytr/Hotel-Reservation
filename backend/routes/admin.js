@@ -100,12 +100,14 @@ router.get('/audit', protect, requireAdmin, async (req, res) => {
 router.get('/online-users', protect, requireAdmin, async (req, res) => {
   try {
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-    const allUsers = await User.find({}, 'firstName lastName email role lastLogin lastActivity').lean();
+    const allUsers = await User.find({}, 'firstName lastName email role lastLogin lastActivity isOnline').lean();
     
     const result = allUsers.map((u) => {
       const lastActivityDate = u.lastActivity ? new Date(u.lastActivity) : null;
-      const isOnline = lastActivityDate && lastActivityDate >= fifteenMinutesAgo;
       const minutesAgo = lastActivityDate ? Math.floor((Date.now() - lastActivityDate) / 60000) : null;
+
+      // A user is considered online only if explicitly marked online AND activity is recent
+      const isOnline = !!u.isOnline && !!lastActivityDate && lastActivityDate >= fifteenMinutesAgo;
       
       return {
         id: u._id.toString(),
@@ -114,8 +116,8 @@ router.get('/online-users', protect, requireAdmin, async (req, res) => {
         role: (u.role || 'guest').toUpperCase(),
         lastLogin: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
         lastActivity: u.lastActivity ? new Date(u.lastActivity).toISOString() : null,
-        minutesAgo: minutesAgo,
-        isOnline: isOnline,
+        minutesAgo,
+        isOnline,
       };
     });
     

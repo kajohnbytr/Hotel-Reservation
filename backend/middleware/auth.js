@@ -16,7 +16,10 @@ export const protect = async (req, res, next) => {
                 const lastActivity = req.user.lastActivity ? new Date(req.user.lastActivity) : null;
                 if (!lastActivity || (now - lastActivity) > 60000) { // Update every 60 seconds max
                     try {
-                        await User.updateOne({ _id: req.user._id }, { lastActivity: now });
+                        await User.updateOne(
+                          { _id: req.user._id },
+                          { lastActivity: now, isOnline: true }
+                        );
                     } catch (err) {
                         console.error('Failed to update lastActivity:', err);
                     }

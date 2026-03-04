@@ -41,6 +41,44 @@ router.post('/', protect, requireAdmin, async (req, res) => {
   }
 });
 
+// Update room (admin only)
+router.put('/:id', protect, requireAdmin, async (req, res) => {
+  try {
+    const { name, type, pricePerNight, maxGuests, description, imageUrl, amenities } = req.body;
+    const update = {};
+    if (name != null) update.name = name;
+    if (type != null) update.type = type;
+    if (pricePerNight != null) update.pricePerNight = Number(pricePerNight);
+    if (maxGuests != null) update.maxGuests = Number(maxGuests);
+    if (description != null) update.description = description;
+    if (imageUrl != null) update.imageUrl = imageUrl;
+    if (amenities != null) update.amenities = Array.isArray(amenities) ? amenities : [];
+
+    const room = await Room.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!room) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+
+    try {
+      const adminName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail: req.user.email,
+        userName: adminName,
+        action: 'room_updated',
+        details: `Updated room: ${room.name}`,
+      });
+    } catch (err) {
+      console.error('[Audit] Failed to record room_updated:', err.message);
+    }
+
+    res.json(room);
+  } catch (error) {
+    console.error('Update room error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 // List rooms (for admin and public)
 router.get('/', async (req, res) => {
   try {

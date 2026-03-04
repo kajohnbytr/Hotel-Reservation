@@ -74,17 +74,31 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Implement "first admin" policy: only the first user can be admin
-    let userRole = 'guest'; // Default role for all new users
+    const requestedRole = (role || 'guest').toLowerCase();
+
+    // Implement "first admin" policy:
+    // - While there is NO admin in the system, ONLY an admin registration is allowed.
+    // - After an admin exists, guests can self-register but additional admins are blocked.
+    let userRole = 'guest';
     const adminExists = await User.findOne({ role: 'admin' });
-    if (!adminExists && role === 'admin') {
-      // No admin exists yet and client requested admin role - allow it
+
+    if (!adminExists) {
+      if (requestedRole !== 'admin') {
+        return res.status(403).json({
+          message: 'System setup required. Please create an admin account first before registering other users.',
+        });
+      }
+      // First account is an admin
       userRole = 'admin';
-    } else if (adminExists && role === 'admin') {
-      // Admin already exists - reject admin role request
-      return res.status(403).json({ message: 'An admin account already exists. You cannot create another admin account.' });
-    } else if (role === 'staff') {
-      // Staff role can only be set by existing admin (not through registration)
+    } else if (requestedRole === 'admin') {
+      // Admin already exists - reject additional admin signups
+      return res.status(403).json({
+        message: 'An admin account already exists. You cannot create another admin account via public registration.',
+      });
+    } else if (requestedRole === 'staff') {
+      // Staff role can only be created via admin tools, not public signup
+      userRole = 'guest';
+    } else {
       userRole = 'guest';
     }
 
@@ -92,12 +106,11 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     try {
       const userEmail = (user.email && String(user.email).trim()) || 'unknown';
       const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
-      const role = (normalizedRole === 'admin' || normalizedRole === 'staff') ? normalizedRole : 'guest';
       await AuditLog.create({
         userId: user._id,
         userEmail,
         userName,
-        role: user.role || userRole,
+        role: userRole,
         action: 'signup',
         details: `New ${userRole} signed up`,
       });
@@ -154,9 +167,11 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
 
     clearLoginAttempts(email);
     
-    // Update last login timestamp
-    user.lastLogin = new Date();
-    user.lastActivity = new Date();
+    // Update last login/activity and mark user online
+    const now = new Date();
+    user.lastLogin = now;
+    user.lastActivity = now;
+    user.isOnline = true;
     await user.save();
     
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
@@ -336,10 +351,11 @@ router.get('/me', protect, async (req, res) => {
 // Logout (protected)
 router.post('/logout', protect, async (req, res) => {
   try {
-    // Clear user activity to mark them as offline
+    const now = new Date();
+    // Mark user as offline and record lastActivity as the logout time
     await User.updateOne(
       { _id: req.user._id },
-      { lastActivity: null }
+      { lastActivity: now, isOnline: false }
     );
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {

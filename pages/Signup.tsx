@@ -20,6 +20,8 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
   const [showTermsError, setShowTermsError] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [error, setError] = useState('');
+  const [adminSetupRequired, setAdminSetupRequired] = useState(false);
+  const [adminCheckDone, setAdminCheckDone] = useState(false);
 
   useEffect(() => {
     if (!isTermsOpen) return;
@@ -32,6 +34,23 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isTermsOpen]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/users/admin-exists`)
+      .then((res) => (res.ok ? res.json() : { adminExists: true }))
+      .then((data) => {
+        if (cancelled) return;
+        setAdminSetupRequired(!data?.adminExists);
+        setAdminCheckDone(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminCheckDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const nameHasNumbers = (s: string) => /\d/.test(s);
 
   // Show mismatch error only when user has typed something in confirm field
@@ -39,6 +58,10 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (adminSetupRequired) {
+      setError('System setup required. Please create an admin account first before registering other users.');
+      return;
+    }
     if (!acceptedTerms) {
       setShowTermsError(true);
       return;
@@ -101,6 +124,12 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
           <h1 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Join Aurora</h1>
           <p className="text-[#0A2342]/50 dark:text-[#F9F7F2]/70 text-xs uppercase tracking-widest">Create your account</p>
         </div>
+
+        {adminSetupRequired && adminCheckDone && (
+          <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            System setup required: <strong>no admin account exists yet</strong>. Please ask the administrator to create the first admin account.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
@@ -256,7 +285,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
 
           <button
             type="submit"
-            disabled={isLoading || !acceptedTerms}
+            disabled={adminSetupRequired || isLoading || !acceptedTerms}
             className="w-full bg-[#0A2342] hover:bg-[#153a66] text-[#F9F7F2] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] font-bold py-4 transition-colors disabled:opacity-70 uppercase tracking-widest text-xs rounded-lg"
           >
             {isLoading ? 'Creating Account...' : 'Sign Up'}
@@ -271,16 +300,6 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               className="text-[#D4AF37] font-bold hover:underline"
             >
               Sign In
-            </button>
-          </p>
-          <p className="text-[#0A2342]/60 dark:text-[#F9F7F2]/70 text-sm mt-2">
-            Staff access:{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateToStaffLogin && onNavigateToStaffLogin()}
-              className="text-[#D4AF37] font-bold hover:underline"
-            >
-              Staff Portal
             </button>
           </p>
         </div>
