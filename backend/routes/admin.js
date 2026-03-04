@@ -6,7 +6,63 @@ import AuditLog from '../models/auditLog.js';
 
 const router = express.Router();
 
-// List users (admin only)
+// Create staff account (admin only)
+router.post('/create-staff', protect, requireAdmin, async (req, res) => {
+  try {
+    const { firstName, lastName, email, password } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ message: 'firstName, lastName, email, and password are required' });
+    }
+
+    // Check if user already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+
+    // Create new staff user
+    const staff = await User.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      role: 'staff',
+    });
+
+    // Log the action
+    try {
+      const adminName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail: req.user.email,
+        userName: adminName,
+        role: 'admin',
+        action: 'admin_created_staff',
+        details: `Created staff account for ${email}`,
+      });
+      console.log('[Audit] admin_created_staff recorded for', req.user.email);
+    } catch (err) {
+      console.error('[Audit] admin_created_staff:', err.message);
+    }
+
+    res.status(201).json({
+      message: 'Staff account created successfully',
+      staff: {
+        id: staff._id.toString(),
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        email: staff.email,
+        role: staff.role,
+      },
+    });
+  } catch (error) {
+    console.error('Create staff error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 router.get('/users', protect, requireAdmin, async (req, res) => {
   try {
     const users = await User.find({}, 'firstName lastName email role createdAt').lean();
@@ -40,26 +96,64 @@ router.get('/audit', protect, requireAdmin, async (req, res) => {
   }
 });
 
-// Create audit log entry (admin only) – called by frontend for view/tab events
-router.post('/audit', protect, requireAdmin, async (req, res) => {
+// Get online users (admin only) – users active in the last 15 minutes
+router.get('/online-users', protect, requireAdmin, async (req, res) => {
   try {
-    const { action, details } = req.body;
-    if (!action || typeof action !== 'string') {
-      return res.status(400).json({ message: 'action is required' });
-    }
-    const userName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
-    const log = await AuditLog.create({
-      userId: req.user._id,
-      userEmail: req.user.email,
-      userName,
-      role: 'admin',
-      action: action.trim().slice(0, 100),
-      details: details != null ? String(details).slice(0, 500) : '',
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const allUsers = await User.find({}, 'firstName lastName email role lastLogin lastActivity').lean();
+    
+    const result = allUsers.map((u) => {
+      const lastActivityDate = u.lastActivity ? new Date(u.lastActivity) : null;
+      const isOnline = lastActivityDate && lastActivityDate >= fifteenMinutesAgo;
+      const minutesAgo = lastActivityDate ? Math.floor((Date.now() - lastActivityDate) / 60000) : null;
+      
+      return {
+        id: u._id.toString(),
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+        email: u.email,
+        role: (u.role || 'guest').toUpperCase(),
+        lastLogin: u.lastLogin ? new Date(u.lastLogin).toISOString() : null,
+        lastActivity: u.lastActivity ? new Date(u.lastActivity).toISOString() : null,
+        minutesAgo: minutesAgo,
+        isOnline: isOnline,
+      };
     });
-    console.log('[Audit]', action, 'recorded for', req.user.email);
-    res.status(201).json(log);
+    
+    res.json({
+      onlineCount: result.filter(u => u.isOnline).length,
+      users: result.sort((a, b) => (new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime())),
+    });
   } catch (error) {
-    console.error('[Audit] Create error:', error.message);
+    console.error('Online users error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Get user activity summary (admin only)
+router.get('/user-activity/:userId', protect, requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId, 'firstName lastName email role lastLogin lastActivity').lean();
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const now = new Date();
+    const lastActivityDate = user.lastActivity ? new Date(user.lastActivity) : null;
+    const minutesSinceActivity = lastActivityDate ? Math.floor((now - lastActivityDate) / 60000) : null;
+    const isOnline = minutesSinceActivity !== null && minutesSinceActivity <= 15;
+    
+    res.json({
+      id: user._id.toString(),
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+      email: user.email,
+      role: (user.role || 'guest').toUpperCase(),
+      lastLogin: user.lastLogin ? new Date(user.lastLogin).toISOString() : null,
+      lastActivity: user.lastActivity ? new Date(user.lastActivity).toISOString() : null,
+      minutesSinceActivity,
+      isOnline,
+    });
+  } catch (error) {
+    console.error('User activity error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });

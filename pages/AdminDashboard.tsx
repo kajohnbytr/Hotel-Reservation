@@ -29,6 +29,9 @@ interface GuestRow {
   name: string;
   email: string;
   role: string;
+  lastActivity?: string;
+  minutesAgo?: number | null;
+  isOnline?: boolean;
 }
 
 interface AdminDashboardProps {
@@ -161,16 +164,50 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
       .catch(() => setOccupiedRoomIds([]));
   }, [token, activeTab, selectedDate]);
 
+  // Fetch and auto-refresh users/online status
+  const fetchGuestsWithOnlineStatus = async (token: string) => {
+    try {
+      const [usersData, onlineData] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((res) => (res.ok ? res.json() : [])),
+        fetch(`${API_BASE}/api/admin/online-users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((res) => (res.ok ? res.json() : { users: [] })),
+      ]);
+      
+      const users = Array.isArray(usersData) ? usersData : [];
+      const onlineUsers = (onlineData?.users || []).reduce((acc: Record<string, any>, u: any) => {
+        acc[u.email] = { lastActivity: u.lastActivity, minutesAgo: u.minutesAgo, isOnline: u.isOnline };
+        return acc;
+      }, {});
+      const mergedGuests = users.map((u: any) => ({
+        ...u,
+        lastActivity: onlineUsers[u.email]?.lastActivity,
+        minutesAgo: onlineUsers[u.email]?.minutesAgo,
+        isOnline: onlineUsers[u.email]?.isOnline ?? false,
+      }));
+      setGuests(mergedGuests);
+    } catch (err) {
+      console.error('Failed to fetch guests:', err);
+      setGuests([]);
+    }
+  };
+
   useEffect(() => {
     if (!token || activeTab !== 'guests') {
       return;
     }
-    fetch(`${API_BASE}/api/admin/users`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setGuests(Array.isArray(data) ? data : []))
-      .catch(() => setGuests([]));
+
+    // Fetch immediately
+    fetchGuestsWithOnlineStatus(token);
+
+    // Set up auto-refresh every 20 seconds
+    const interval = setInterval(() => {
+      fetchGuestsWithOnlineStatus(token);
+    }, 20000);
+
+    return () => clearInterval(interval);
   }, [token, activeTab]);
 
   const roomStatuses: RoomStatus[] = rooms.map((room) => ({
@@ -536,20 +573,52 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
               <table className="w-full">
                 <thead>
                   <tr className="bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2]">
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">User ID</th>
                     <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Email</th>
                     <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Last Activity</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredGuests.map((g) => (
                     <tr key={g.id} className="border-t border-[#E2E8F0] dark:border-[#1f2937]">
+                      <td className="px-6 py-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          {g.isOnline ? (
+                            <div 
+                              style={{ 
+                                width: '12px', 
+                                height: '12px', 
+                                backgroundColor: '#22c55e', 
+                                borderRadius: '50%',
+                                display: 'inline-block'
+                              }} 
+                              title={`Online - ${g.minutesAgo === 0 ? 'Just now' : `${g.minutesAgo} min ago`}`}
+                            ></div>
+                          ) : (
+                            <div 
+                              style={{ 
+                                width: '12px', 
+                                height: '12px', 
+                                border: '2px solid #9ca3af', 
+                                borderRadius: '50%',
+                                display: 'inline-block'
+                              }} 
+                              title="Offline"
+                            ></div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.id}</td>
                       <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2] font-medium">{g.name}</td>
                       <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.email}</td>
                       <td className="px-6 py-3 text-xs font-semibold text-[#0A2342]/70 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
                         {g.role}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                        {g.minutesAgo === 0 ? 'Just now' : g.minutesAgo ? `${g.minutesAgo} min ago` : '—'}
                       </td>
                     </tr>
                   ))}

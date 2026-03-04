@@ -155,7 +155,25 @@ export const registerUser = (email: string, name: string) => {
   return loginUser(email, name);
 };
 
-export const logoutUser = () => {
+export const logoutUser = async () => {
+  const token = localStorage.getItem('aurora_token');
+  
+  // Notify backend about logout
+  if (token) {
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      await fetch(`${apiBase}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+    } catch (error) {
+      console.error('Logout notification error:', error);
+    }
+  }
+  
+  // Clear local storage
   localStorage.removeItem('aurora_user');
   localStorage.removeItem('aurora_token');
   localStorage.removeItem('aurora_refresh_token');

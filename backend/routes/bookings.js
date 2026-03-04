@@ -6,6 +6,10 @@ import { recordBookingOnChain } from '../blockchain.js';
 
 const router = express.Router();
 
+// Reservation limit configuration
+const MAX_CONCURRENT_BOOKINGS = parseInt(process.env.MAX_CONCURRENT_BOOKINGS || '3', 10);
+const MAX_BOOKINGS_PER_DAY = parseInt(process.env.MAX_BOOKINGS_PER_DAY || '2', 10);
+
 // List bookings (for reception; optional search)
 router.get('/', protect, async (req, res) => {
   try {
@@ -72,6 +76,35 @@ router.post('/', protect, async (req, res) => {
     if (overlapping) {
       return res.status(409).json({ message: 'This room is not available for the selected dates. Please choose different dates.' });
     }
+
+    // Check concurrent bookings limit
+    const concurrentBookings = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      checkIn: { $lt: checkOutDate },
+      checkOut: { $gt: checkInDate },
+    });
+    if (concurrentBookings >= MAX_CONCURRENT_BOOKINGS) {
+      return res.status(429).json({ 
+        message: `You can only have up to ${MAX_CONCURRENT_BOOKINGS} concurrent reservations. Please cancel an existing booking before making a new one.` 
+      });
+    }
+
+    // Check daily bookings limit
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const dailyBookings = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+    if (dailyBookings >= MAX_BOOKINGS_PER_DAY) {
+      return res.status(429).json({ 
+        message: `You have reached the maximum of ${MAX_BOOKINGS_PER_DAY} bookings per day. Please try again tomorrow.` 
+      });
+    }
+
     const bookingData = {
       guestName,
       roomId,
@@ -203,6 +236,46 @@ router.get('/availability', protect, async (req, res) => {
     res.json({ occupiedRoomIds: occupied });
   } catch (error) {
     console.error('Availability error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Get user's booking limits and current usage
+router.get('/user/stats', protect, async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    // Count concurrent bookings (overlapping with today)
+    const concurrentCount = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      checkIn: { $lt: now },
+      checkOut: { $gt: now },
+    });
+
+    // Count bookings made today
+    const dailyCount = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+
+    res.json({
+      concurrentBookings: {
+        current: concurrentCount,
+        limit: MAX_CONCURRENT_BOOKINGS,
+        canBook: concurrentCount < MAX_CONCURRENT_BOOKINGS,
+      },
+      dailyBookings: {
+        current: dailyCount,
+        limit: MAX_BOOKINGS_PER_DAY,
+        canBook: dailyCount < MAX_BOOKINGS_PER_DAY,
+      },
+    });
+  } catch (error) {
+    console.error('Booking stats error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });

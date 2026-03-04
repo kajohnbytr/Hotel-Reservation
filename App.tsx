@@ -46,9 +46,9 @@ function AppContent() {
   const startInactivityTimer = useCallback(() => {
     clearInactivityTimer();
     if (!user) return;
-    inactivityTimerRef.current = setTimeout(() => {
+    inactivityTimerRef.current = setTimeout(async () => {
       inactivityTimerRef.current = null;
-      logoutUser();
+      await logoutUser();
       setUser(null);
       setCurrentPage('home');
       toast('Logged out due to inactivity.');
@@ -103,9 +103,9 @@ function AppContent() {
     fetch(`${API_BASE}/api/bookings`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
-    }).then((res) => {
+    }).then(async (res) => {
       if (res.status === 401) {
-        logoutUser();
+        await logoutUser();
         setUser(null);
         setCurrentPage('home');
       }
@@ -126,7 +126,9 @@ function AppContent() {
 
     const storedUser = getUser();
     if (storedUser && isSessionExpired()) {
-      logoutUser();
+      (async () => {
+        await logoutUser();
+      })();
       return;
     }
     if (storedUser) {
@@ -170,8 +172,8 @@ function AppContent() {
     toast.success('Account created. Please sign in.');
   };
 
-  const handleLogoutConfirm = () => {
-    logoutUser();
+  const handleLogoutConfirm = async () => {
+    await logoutUser();
     setUser(null);
     setCurrentPage('home');
     toast('Signed out.');

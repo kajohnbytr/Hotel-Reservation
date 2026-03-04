@@ -73,20 +73,31 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    const normalizedRole =
-      role === 'staff' ? 'staff' :
-      role === 'admin' ? 'admin' :
-      'guest';
-    const user = await User.create({ firstName, lastName, email, password, role: normalizedRole });
+
+    // Implement "first admin" policy: only the first user can be admin
+    let userRole = 'guest'; // Default role for all new users
+    const adminExists = await User.findOne({ role: 'admin' });
+    if (!adminExists && role === 'admin') {
+      // No admin exists yet and client requested admin role - allow it
+      userRole = 'admin';
+    } else if (adminExists && role === 'admin') {
+      // Admin already exists - reject admin role request
+      return res.status(403).json({ message: 'An admin account already exists. You cannot create another admin account.' });
+    } else if (role === 'staff') {
+      // Staff role can only be set by existing admin (not through registration)
+      userRole = 'guest';
+    }
+
+    const user = await User.create({ firstName, lastName, email, password, role: userRole });
     try {
       const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
       await AuditLog.create({
         userId: user._id,
         userEmail: user.email,
         userName,
-        role: user.role || normalizedRole,
+        role: user.role || userRole,
         action: 'signup',
-        details: `New ${normalizedRole} signed up`,
+        details: `New ${userRole} signed up`,
       });
       console.log('[Audit] signup recorded for', user.email);
     } catch (err) {
@@ -141,6 +152,12 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     }
 
     clearLoginAttempts(email);
+    
+    // Update last login timestamp
+    user.lastLogin = new Date();
+    user.lastActivity = new Date();
+    await user.save();
+    
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
     try {
@@ -313,6 +330,32 @@ router.post('/reset-password', authLimiter, resetPasswordValidation, async (req,
 // Current user (protected)
 router.get('/me', protect, async (req, res) => {
   res.status(200).json(req.user);
+});
+
+// Logout (protected)
+router.post('/logout', protect, async (req, res) => {
+  try {
+    // Clear user activity to mark them as offline
+    await User.updateOne(
+      { _id: req.user._id },
+      { lastActivity: null }
+    );
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Check if an admin account exists (public, no auth required)
+router.get('/admin-exists', async (req, res) => {
+  try {
+    const adminExists = await User.findOne({ role: 'admin' });
+    res.json({ adminExists: !!adminExists });
+  } catch (error) {
+    console.error('Check admin error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
 });
 
 function generateToken(id, expiresIn = ACCESS_TOKEN_EXPIRY) {
