@@ -79,18 +79,19 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       'guest';
     const user = await User.create({ firstName, lastName, email, password, role: normalizedRole });
     try {
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
+      const role = (normalizedRole === 'admin' || normalizedRole === 'staff') ? normalizedRole : 'guest';
       await AuditLog.create({
         userId: user._id,
-        userEmail: user.email,
+        userEmail,
         userName,
-        role: user.role || normalizedRole,
+        role,
         action: 'signup',
-        details: `New ${normalizedRole} signed up`,
+        details: `New ${role} signed up`,
       });
-      console.log('[Audit] signup recorded for', user.email);
     } catch (err) {
-      console.error('[Audit] Failed to record signup:', err.message);
+      console.error('[Audit] Failed to record signup:', err.message, err);
     }
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
@@ -144,20 +145,20 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
     try {
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-      const role = user.role || 'guest';
+      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
+      const role = (user.role === 'admin' || user.role === 'staff') ? user.role : 'guest';
       const action = role === 'admin' ? 'admin_login' : role === 'staff' ? 'staff_login' : 'guest_login';
       await AuditLog.create({
         userId: user._id,
-        userEmail: user.email,
+        userEmail,
         userName,
         role,
         action,
         details: `${role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Guest'} logged in`,
       });
-      console.log('[Audit]', action, 'recorded for', user.email);
     } catch (err) {
-      console.error('[Audit] Failed to record login:', err.message);
+      console.error('[Audit] Failed to record login:', err.message, err);
     }
     res.status(200).json({
       _id: user._id,

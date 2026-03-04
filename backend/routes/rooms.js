@@ -31,7 +31,6 @@ router.post('/', protect, requireAdmin, async (req, res) => {
         action: 'room_added',
         details: `Added room: ${name}`,
       });
-      console.log('[Audit] room_added recorded for', name);
     } catch (err) {
       console.error('[Audit] Failed to record room_added:', err.message);
     }

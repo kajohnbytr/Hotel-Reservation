@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { DayPicker } from 'react-day-picker';
 import { Room } from '../lib/store';
-import { generateBlockchainHash } from '../lib/utils';
 import { Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import 'react-day-picker/dist/style.css';
@@ -124,8 +123,7 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
     setStep('processing');
 
     const total = room.price * nights;
-    const hash = generateBlockchainHash();
-    onConfirm(hash, checkIn, checkOut, nights, guests, total);
+    onConfirm('', checkIn, checkOut, nights, guests, total);
   };
 
   const handleRangeSelect = (range: { from?: Date; to?: Date } | undefined) => {

@@ -26,7 +26,7 @@ router.get('/', protect, async (req, res) => {
         await AuditLog.create({
           userId: req.user._id,
           userEmail: req.user.email,
-          userName: staffName,
+          userName: staffName || req.user.email,
           role: 'staff',
           action: 'staff_viewed_reservations',
           details: search ? `Viewed reservations (search: ${search})` : 'Viewed reservations list',
@@ -89,44 +89,43 @@ router.post('/', protect, async (req, res) => {
     const booking = await Booking.create(bookingData);
 
     try {
-      const guestName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const guestName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
       const checkInStr = checkInDate.toISOString().split('T')[0];
       const checkOutStr = checkOutDate.toISOString().split('T')[0];
+      const creatorRole = (req.user.role === 'admin' || req.user.role === 'staff') ? req.user.role : 'guest';
       await AuditLog.create({
         userId: req.user._id,
-        userEmail: req.user.email,
+        userEmail,
         userName: guestName,
-        role: 'guest',
+        role: creatorRole,
         action: 'guest_booking',
         details: `Reservation: ${roomName}, ${checkInStr} to ${checkOutStr} (${nights} night(s))`,
       });
-      console.log('[Audit] guest_booking recorded for', req.user.email);
     } catch (err) {
-      console.error('[Audit] guest_booking:', err.message);
+      console.error('[Audit] guest_booking:', err.message, err);
     }
 
-    // Only record on-chain if the client did not already send a txHash
+    // Record on-chain if the client did not already send a txHash; wait so response includes real txHash
     if (!bookingData.txHash) {
-      recordBookingOnChain({
-        guestName: booking.guestName,
-        roomName: booking.roomName,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        total: booking.total,
-      }).then(async (txHash) => {
+      try {
+        const txHash = await recordBookingOnChain({
+          guestName: booking.guestName,
+          roomName: booking.roomName,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          total: booking.total,
+        });
         if (txHash) {
           console.log('Booking recorded on chain, tx=', txHash);
-          try {
-            booking.txHash = txHash;
-            await booking.save();
-          } catch (err) {
-            console.error('Failed to save txHash in booking record', err);
-          }
+          booking.txHash = txHash;
+          await booking.save();
         }
-      }).catch((err) => {
+      } catch (err) {
         console.error('Failed to record booking on chain', err);
-      });
+      }
     }
+
     res.status(201).json({
       id: booking._id.toString(),
       guestName: booking.guestName,
@@ -191,7 +190,7 @@ router.get('/availability', protect, async (req, res) => {
         await AuditLog.create({
           userId: req.user._id,
           userEmail: req.user.email,
-          userName: staffName,
+          userName: staffName || req.user.email,
           role: 'staff',
           action: 'staff_viewed_availability',
           details: `Viewed room availability for ${dateStr}`,

@@ -4,6 +4,8 @@ const router = express.Router();
 
 const AI_ML_URL = process.env.AI_ML_URL || 'http://127.0.0.1:5001';
 const AI_NLP_URL = process.env.AI_NLP_URL || 'http://127.0.0.1:5002';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
 // Built-in fallback when Python ML is unavailable
 function fallbackPredict(body) {
@@ -80,24 +82,49 @@ router.post('/predict', async (req, res) => {
 });
 
 /**
- * Proxy to Python NLP chatbot. Uses built-in hotel intents if service is down.
+ * Chat endpoint used by the frontend chatbot.
+ *
+ * Priority:
+ *  1) Local Ollama LLM (if running)
+ *  2) Built‑in hotel fallback intents
+ *
  * POST /api/ai/chat { message }
  */
 router.post('/chat', async (req, res) => {
-  try {
-    const response = await fetch(`${AI_NLP_URL}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (response.ok && data?.reply) {
-      return res.json(data);
+  const message = req.body?.message;
+
+  // 1) Try local Ollama first (free, runs on your laptop)
+  if (OLLAMA_MODEL) {
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          stream: false, // get a single JSON response instead of streaming chunks
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are Aurora, a helpful hotel assistant for Aurora Hotel. Answer briefly and clearly about rooms, wifi, prices, reservations, and hotel policies. If a question is unrelated to hotels, politely steer the user back to hotel topics.',
+            },
+            { role: 'user', content: String(message || '') },
+          ],
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data?.message?.content) {
+        return res.json({ reply: data.message.content });
+      }
+    } catch (err) {
+      console.error('[AI chat][ollama]', err.message);
+      // if Ollama is not running, we'll fall back below
     }
-  } catch (err) {
-    console.error('[AI chat]', err.message);
   }
-  res.json(fallbackChat(req.body?.message));
+
+  // 2) Final fallback: simple rule‑based hotel replies
+  res.json(fallbackChat(message));
 });
 
 export default router;

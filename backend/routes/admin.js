@@ -56,7 +56,6 @@ router.post('/audit', protect, requireAdmin, async (req, res) => {
       action: action.trim().slice(0, 100),
       details: details != null ? String(details).slice(0, 500) : '',
     });
-    console.log('[Audit]', action, 'recorded for', req.user.email);
     res.status(201).json(log);
   } catch (error) {
     console.error('[Audit] Create error:', error.message);

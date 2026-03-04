@@ -22,17 +22,6 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const suggestionsScrollRef = useRef<HTMLDivElement>(null);
-
-  const quickReplies = [
-    'What rooms do you have?',
-    "What's the price range?",
-    'I need a room for 2 guests',
-    'Tell me about wifi',
-    'How do I make a reservation?',
-    'Recommend a room for my budget',
-    'Is wifi included?',
-  ];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -41,6 +30,40 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   }, [messages, isOpen]);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  // Smoothly stream a bot response character by character
+  const streamBotMessage = async (text: string, recommendedType: string | null) => {
+    const finalText = deduplicateRepeatedWords(text || '');
+    if (!finalText) {
+      setIsTyping(false);
+      return;
+    }
+
+    // Add an empty bot message first
+    setMessages((prev) => [...prev, { role: 'bot', text: '' }]);
+
+    await new Promise<void>((resolve) => {
+      let index = 0;
+      const interval = setInterval(() => {
+        index += 1;
+        const slice = finalText.slice(0, index);
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          copy[copy.length - 1] = last.role === 'bot' ? { ...last, text: slice } : last;
+          return copy;
+        });
+        if (index >= finalText.length) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 18); // typing speed (ms per character)
+    });
+
+    if (recommendedType && onRecommend) onRecommend(recommendedType);
+    setIsTyping(false);
+  };
 
   // ================= TALK TO NLP CHATBOT (via backend) =================
   const askNLP = async (message: string) => {
@@ -136,33 +159,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
       botResponse = await askNLP(userMessage);
     }
 
-    botResponse = deduplicateRepeatedWords(botResponse);
-    setMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
-    if (recommendedType && onRecommend) onRecommend(recommendedType);
-    setIsTyping(false);
-  };
-
-  const handleQuickReply = (text: string) => {
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', text }]);
-    setIsTyping(true);
-    (async () => {
-      await wait(600);
-      const lower = text.toLowerCase();
-      let botResponse: string;
-      let recommendedType: string | null = null;
-      if (/\b(guest|people|night|budget|stay|room|recommend)\b/.test(lower)) {
-        const info = extractBookingInfo(text);
-        const data = await callAI(info);
-        botResponse = typeof data === 'object' && data?.message ? data.message : String(data);
-        if (typeof data === 'object' && data?.type) recommendedType = data.type;
-      } else {
-        botResponse = await askNLP(text);
-      }
-      setMessages(prev => [...prev, { role: 'bot', text: deduplicateRepeatedWords(botResponse) }]);
-      if (recommendedType && onRecommend) onRecommend(recommendedType);
-      setIsTyping(false);
-    })();
+    await streamBotMessage(botResponse, recommendedType);
   };
 
   return (
@@ -224,39 +221,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
               )}
             </div>
 
-            <div className="flex-shrink-0 w-full min-w-0 flex flex-col border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 bg-[#F9F7F2]/30 dark:bg-[#05152a]/50">
-              <div
-                ref={suggestionsScrollRef}
-                role="region"
-                aria-label="Suggestion chips"
-                className="chatbot-suggestions-scroll w-full min-w-0 overflow-x-scroll overflow-y-hidden"
-                style={{ WebkitOverflowScrolling: 'touch' }}
-                onWheel={(e) => {
-                  const el = suggestionsScrollRef.current;
-                  if (!el || e.deltaY === 0) return;
-                  const canScrollLeft = el.scrollLeft > 0;
-                  const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
-                  if ((e.deltaY > 0 && canScrollRight) || (e.deltaY < 0 && canScrollLeft)) {
-                    e.preventDefault();
-                    el.scrollLeft += e.deltaY;
-                  }
-                }}
-              >
-                <div className="flex flex-nowrap gap-2 px-4 py-2.5 pb-3" style={{ width: 'max-content', minWidth: 'max-content' }}>
-                  {quickReplies.map((q) => (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => handleQuickReply(q)}
-                      className="flex-shrink-0 inline-flex items-center px-4 py-2 rounded-xl text-sm font-medium bg-[#0A2342] text-white hover:bg-[#153a66] dark:bg-[#0A2342] dark:text-[#F9F7F2] dark:hover:bg-[#153a66] border-0 transition-colors shadow-sm"
-                      style={{ whiteSpace: 'nowrap' }}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            {/* Suggestions removed per user request */}
             <div className="p-4 bg-white dark:bg-[#05152a] border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
               <div className="flex gap-2">
                 <input
