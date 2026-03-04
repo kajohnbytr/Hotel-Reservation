@@ -27,6 +27,14 @@ const userSchema = new mongoose.Schema({
         enum: ['guest', 'staff', 'admin'],
         default: 'guest',
     },
+    lastLogin: {
+        type: Date,
+        default: null,
+    },
+    lastActivity: {
+        type: Date,
+        default: null,
+    },
 }, {timestamps: true});
 
 userSchema.pre('save', async function(next) {
