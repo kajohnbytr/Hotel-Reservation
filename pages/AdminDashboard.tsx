@@ -370,277 +370,267 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
         </div>
 
         {/* Reservations tab */}
-        {activeTab === 'reservations' && (
-          <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-[#0A2342] text-[#F9F7F2]">
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Guest Name</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Room</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Check-in</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Check-out</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Nights</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Guests</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
-                        Loading...
-                      </td>
-                    </tr>
-                  ) : reservations.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
-                        No reservations found matching your search.
-                      </td>
-                    </tr>
-                  ) : (
-                    reservations.map((res) => (
-                      <tr
-                        key={res.id}
-                        className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 hover:bg-[#F9F7F2]/50 dark:hover:bg-[#0A2342]/30"
-                      >
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-medium">{res.guestName}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.room}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.checkIn}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.checkOut}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.nights}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.guests}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-semibold">
-                          ₱{Number(res.total).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
+    {activeTab === 'reservations' && (
+  <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden p-4">
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="bg-[#0A2342] text-[#F9F7F2]">
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Guest Name</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Room</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Check-in</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Check-out</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Nights</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Guests</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr>
+              <td colSpan={7} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                Loading...
+              </td>
+            </tr>
+          ) : reservations.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                No reservations found.
+              </td>
+            </tr>
+          ) : (
+            reservations.map((res) => (
+              <tr
+                key={res.id}
+                className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 hover:bg-[#F9F7F2]/50 dark:hover:bg-[#0A2342]/30"
+              >
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-medium">{res.guestName}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.room}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.checkIn}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.checkOut}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.nights}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.guests}</td>
+                <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-semibold">
+                  ₱{Number(res.total).toFixed(2)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
         {/* Availability tab */}
-        {activeTab === 'availability' && (
-          <div className="flex flex-col md:flex-row md:justify-between gap-8 items-start">
-            <div className="flex-shrink-0">
-              <div className="w-full max-w-lg bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-8">
-                <h3 className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-5">Select Date</h3>
-                <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#F9F7F2]/20 bg-[#F9FBFF] dark:bg-[#0A2342] px-10 py-6 text-[#0A2342] dark:text-[#F9F7F2]">
-                  <div className="flex items-center justify-between mb-4">
-                    <button
-                      type="button"
-                      onClick={previousMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
-                    >
-                      <ChevronLeft size={22} />
-                    </button>
-                    <span className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
-                      {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear()}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={nextMonth}
-                      className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5"
-                    >
-                      <ChevronRight size={22} />
-                    </button>
-                  </div>
-                  <table className="w-full text-center text-base">
-                    <thead>
-                      <tr>
-                        {dayNames.map((day) => (
-                          <th
-                            key={day}
-                            className="pb-2 font-semibold text-xs text-[#0A2342] dark:text-[#F9F7F2]"
-                          >
-                            {day}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weeks.map((week, wi) => (
-                        <tr key={wi}>
-                          {week.map((day, di) => (
-                            <td key={di} className="py-1">
-                              {day === null ? (
-                                <span className="inline-block h-10 w-10" />
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedDate(
-                                      new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day)
-                                    )
-                                  }
-                                  className={`h-10 w-10 inline-flex items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-                                    day === selectedDate.getDate()
-                                      ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
-                                      : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#0A2342]/10 dark:hover:bg-[#F9F7F2]/10'
-                                  }`}
-                                >
-                                  {day}
-                                </button>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-5 pt-4 flex justify-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-green-500" />
-                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">Available</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-red-500" />
-                    <span className="text-sm font-semibold text-red-600 dark:text-red-400">Occupied</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex-1 w-full md:max-w-lg">
-              <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">
-                Room Status for {formatDateHeader(selectedDate)}
-              </h3>
-              <div className="space-y-5">
-                {roomStatuses.map((room) => (
-                  <div
-                    key={room.roomId}
-                    className={`rounded-lg p-5 flex items-center justify-between border ${
-                      room.status === 'available'
-                        ? 'bg-[#E8F5E9] dark:bg-[#0A2342]/40 border-green-200 dark:border-green-900/30'
-                        : 'bg-[#FFEBEE] dark:bg-[#3d1f1f]/40 border-red-200 dark:border-red-900/30'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <img src={room.image} alt={room.name} className="w-20 h-20 rounded-lg object-cover shrink-0" />
-                      <div className="min-w-0">
-                        <h4 className="font-serif text-[#0A2342] dark:text-[#F9F7F2] font-semibold text-lg truncate">
-                          {room.name}
-                        </h4>
-                        <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest">
-                          {room.type}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="flex flex-col items-end">
-                        <span
-                          className={`text-sm font-bold ${
-                            room.status === 'available'
-                              ? 'text-green-600 dark:text-green-400'
-                              : 'text-red-600 dark:text-red-400'
+       {activeTab === 'availability' && (
+  <div className="flex flex-col md:flex-row md:justify-between gap-8 items-start">
+    {/* Calendar */}
+    <div className="flex-shrink-0">
+      <div className="w-full max-w-lg bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl p-8">
+        <h3 className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2] mb-5">Select Date</h3>
+        <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#F9F7F2]/20 bg-[#F9FBFF] dark:bg-[#0A2342] px-10 py-6 text-[#0A2342] dark:text-[#F9F7F2]">
+          <div className="flex items-center justify-between mb-4">
+            <button type="button" onClick={previousMonth} className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5 transition-colors">
+              <ChevronLeft size={22} />
+            </button>
+            <span className="text-base font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+              {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear()}
+            </span>
+            <button type="button" onClick={nextMonth} className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] p-1.5 transition-colors">
+              <ChevronRight size={22} />
+            </button>
+          </div>
+          <table className="w-full text-center text-base">
+            <thead>
+              <tr>
+                {dayNames.map((day) => (
+                  <th key={day} className="pb-2 font-semibold text-xs text-[#0A2342] dark:text-[#F9F7F2]">{day}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((week, wi) => (
+                <tr key={wi}>
+                  {week.map((day, di) => (
+                    <td key={di} className="py-1">
+                      {day === null ? (
+                        <span className="inline-block h-10 w-10" />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day))}
+                          className={`h-10 w-10 inline-flex items-center justify-center rounded-full text-sm font-semibold transition-all ${
+                            day === selectedDate.getDate()
+                              ? 'bg-[#0A2342] text-[#F9F7F2] dark:bg-[#153a66]'
+                              : 'text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#0A2342]/10 dark:hover:bg-[#F9F7F2]/10'
                           }`}
                         >
-                          {room.status === 'available' ? 'Available' : 'Occupied'}
-                        </span>
-                        {room.status === 'available' && (
-                          <span className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">Ready for check-in</span>
-                        )}
-                      </div>
-                      {room.status === 'available' ? (
-                        <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full border-2 border-red-500 dark:border-red-400" />
+                          {day}
+                        </button>
                       )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Users tab */}
-        {activeTab === 'guests' && (
-          <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex items-center justify-between gap-4">
-              <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Users</h2>
-              <div className="relative w-full max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={guestSearch}
-                  onChange={(e) => setGuestSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 bg-[#F9F7F2] dark:bg-[#0A2342] text-sm"
-                />
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2]">
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">User ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Last Activity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredGuests.map((g) => (
-                    <tr key={g.id} className="border-t border-[#E2E8F0] dark:border-[#1f2937]">
-                      <td className="px-6 py-3 text-sm">
-                        <div className="flex items-center gap-2">
-                          {/* Treat user as actively online only if last activity was < 1 minute ago */}
-                          {g.minutesAgo != null && g.minutesAgo === 0 ? (
-                            <span
-                              style={{
-                                width: '12px',
-                                height: '12px',
-                                backgroundColor: '#22c55e',
-                                borderRadius: '50%',
-                                display: 'inline-block',
-                              }}
-                              title="Online • active within the last minute"
-                            />
-                          ) : (
-                            <span
-                              style={{
-                                width: '12px',
-                                height: '12px',
-                                backgroundColor: '#ef4444',
-                                borderRadius: '50%',
-                                display: 'inline-block',
-                              }}
-                              title={
-                                g.lastActivity
-                                  ? `Offline • last seen ${getRelativeTime(g.lastActivity) || formatAuditDate(g.lastActivity)}`
-                                  : 'Offline'
-                              }
-                            />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.id}</td>
-                      <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2] font-medium">{g.name}</td>
-                      <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.email}</td>
-                      <td className="px-6 py-3 text-xs font-semibold text-[#0A2342]/70 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
-                        {g.role}
-                      </td>
-                      <td className="px-6 py-3 text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
-                        {g.lastActivity
-                          ? (() => {
-                              const rel = getRelativeTime(g.lastActivity);
-                              return rel || formatAuditDate(g.lastActivity);
-                            })()
-                          : '—'}
-                      </td>
-                    </tr>
+                    </td>
                   ))}
-                </tbody>
-              </table>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 mt-5 pt-4 flex justify-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-green-500" />
+            <span className="text-sm font-semibold text-green-600 dark:text-green-400">Available</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-red-500" />
+            <span className="text-sm font-semibold text-red-600 dark:text-red-400">Occupied</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Room Status */}
+    <div className="flex-1 w-full md:max-w-lg">
+      <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">
+        Room Status for {formatDateHeader(selectedDate)}
+      </h3>
+      <div className="space-y-6">
+        {roomStatuses.map((room) => (
+          <div
+            key={room.roomId}
+            className={`rounded-xl p-5 flex items-center justify-between border shadow-md transition-all duration-300 ease-in-out hover:-translate-y-1 hover:border-[#D4AF37]`}
+          >
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <img
+                src={room.image}
+                alt={room.name}
+                className="w-32 h-20 rounded-xl object-cover shrink-0 border border-gray-200/30 dark:border-white/10"
+              />
+              <div className="min-w-0">
+                <h4 className="font-serif text-[#0A2342] dark:text-[#F9F7F2] font-semibold text-lg truncate">
+                  {room.name}
+                </h4>
+                <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest">
+                  {room.type}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="flex flex-col items-end">
+                <span
+                  className={`text-sm font-bold transition-colors ${
+                    room.status === 'available'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {room.status === 'available' ? 'Available' : 'Occupied'}
+                </span>
+                {room.status === 'available' && (
+                  <span className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60">Ready for check-in</span>
+                )}
+              </div>
+              {room.status === 'available' ? (
+                <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+              ) : (
+                <div className="w-6 h-6 rounded-full border-2 border-red-500 dark:border-red-400" />
+              )}
             </div>
           </div>
-        )}
+        ))}
+      </div>
+    </div>
+  </div>
+)}
+        {/* Users tab */}
+       {activeTab === 'guests' && (
+  <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
+    <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex items-center justify-between gap-4">
+      <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Users</h2>
+
+      <div className="flex justify-end w-1/2">
+        <div className="relative w-full max-w-xs">
+          {/* Search icon properly aligned */}
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0A2342]/50 dark:text-[#F9F7F2]/50 pointer-events-none" />
+
+          {/* Input */}
+          <input
+            type="text"
+            value={guestSearch}
+            onChange={(e) => setGuestSearch(e.target.value)}
+            placeholder="Search users..."
+            className="w-full h-10 pl-10 pr-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] text-sm text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 transition"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2]">
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Status</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">User ID</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Name</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Email</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Last Activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredGuests.map((g) => (
+            <tr key={g.id} className="border-t border-[#E2E8F0] dark:border-[#1f2937]">
+              <td className="px-6 py-3 text-sm">
+                <div className="flex items-center gap-2">
+                  {g.minutesAgo != null && g.minutesAgo === 0 ? (
+                    <span
+                      style={{
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: '#22c55e',
+                        borderRadius: '50%',
+                        display: 'inline-block',
+                      }}
+                      title="Online • active within the last minute"
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: '#ef4444',
+                        borderRadius: '50%',
+                        display: 'inline-block',
+                      }}
+                      title={
+                        g.lastActivity
+                          ? `Offline • last seen ${getRelativeTime(g.lastActivity) || formatAuditDate(g.lastActivity)}`
+                          : 'Offline'
+                      }
+                    />
+                  )}
+                </div>
+              </td>
+              <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.id}</td>
+              <td className="px-6 py-3 text-sm text-[#0A2342] dark:text-[#F9F7F2] font-medium">{g.name}</td>
+              <td className="px-6 py-3 text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80">{g.email}</td>
+              <td className="px-6 py-3 text-xs font-semibold text-[#0A2342]/70 dark:text-[#F9F7F2]/70 uppercase tracking-widest">
+                {g.role}
+              </td>
+              <td className="px-6 py-3 text-sm text-[#0A2342]/60 dark:text-[#F9F7F2]/60">
+                {g.lastActivity
+                  ? (() => {
+                      const rel = getRelativeTime(g.lastActivity);
+                      return rel || formatAuditDate(g.lastActivity);
+                    })()
+                  : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
         {/* Audit Logs tab */}
         {activeTab === 'audit-logs' && (
