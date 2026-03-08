@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
-import { wait } from '../lib/utils';
+
+const PRE_SEND_DELAY_MS = 120;
+const TYPING_CHAR_INTERVAL_MS = 8;
+const MAX_TYPING_ANIMATION_CHARS = 140;
 
 /** Removes consecutive repeated words so the bot doesn't say "the the" or "room room". */
 function deduplicateRepeatedWords(text: string): string {
@@ -17,7 +20,7 @@ function deduplicateRepeatedWords(text: string): string {
 export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([
-    { role: 'bot', text: 'Welcome to Aurora. Ask about rooms, wifi, prices, or how to reserve. You can also tell me your budget or number of guests for a suggestion.' },
+    { role: 'bot', text: 'Welcome to Aurora. You can chat in English or Filipino. Ask about rooms, wifi, prices, or reservations, then share your budget and number of guests for recommendations.' },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -85,6 +88,14 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
       return;
     }
 
+    // Long answers are shown immediately to avoid multi-second rendering delays.
+    if (finalText.length > MAX_TYPING_ANIMATION_CHARS) {
+      setMessages((prev) => [...prev, { role: 'bot', text: finalText }]);
+      if (recommendedType && onRecommend) onRecommend(recommendedType);
+      setIsTyping(false);
+      return;
+    }
+
     // Add an empty bot message first
     setMessages((prev) => [...prev, { role: 'bot', text: '' }]);
 
@@ -104,7 +115,7 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
           clearInterval(interval);
           resolve();
         }
-      }, 18); // typing speed (ms per character)
+      }, TYPING_CHAR_INTERVAL_MS); // typing speed (ms per character)
     });
 
     if (recommendedType && onRecommend) onRecommend(recommendedType);
@@ -143,7 +154,8 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsTyping(true);
 
-    await wait(900);
+    // Keep a tiny pause so typing indicator appears, but avoid noticeable lag.
+    await new Promise((resolve) => setTimeout(resolve, PRE_SEND_DELAY_MS));
 
     let botResponse = "";
     let recommendedType: string | null = null;
