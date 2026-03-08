@@ -24,34 +24,75 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setBookings([]);
-      return;
-    }
-    const token = localStorage.getItem('aurora_token');
-    if (!token) return;
+    const refreshAccessToken = async (): Promise<string | null> => {
+      const refreshToken = localStorage.getItem('aurora_refresh_token');
+      if (!refreshToken) return null;
 
-    setLoading(true);
-    fetch(`${API_BASE}/api/bookings/my`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(async (res) => {
+      try {
+        const refreshRes = await fetch(`${API_BASE}/api/users/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!refreshRes.ok) return null;
+        const refreshData = await refreshRes.json().catch(() => ({}));
+        const newToken = typeof refreshData.token === 'string' ? refreshData.token : null;
+        if (newToken) {
+          localStorage.setItem('aurora_token', newToken);
+          return newToken;
+        }
+      } catch {
+        return null;
+      }
+
+      return null;
+    };
+
+    const loadBookings = async () => {
+      let token = localStorage.getItem('aurora_token');
+      if (!token) return;
+
+      setLoading(true);
+      try {
+        let res = await fetch(`${API_BASE}/api/bookings/my`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        // Access token may expire earlier than local session; refresh and retry once.
+        if (res.status === 401) {
+          const refreshed = await refreshAccessToken();
+          if (refreshed) {
+            token = refreshed;
+            res = await fetch(`${API_BASE}/api/bookings/my`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+          }
+        }
+
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message || 'Failed to load bookings.');
         }
-        return res.json() as Promise<DashboardBooking[]>;
-      })
-      .then((data) => {
+
+        const data = (await res.json().catch(() => [])) as DashboardBooking[];
         setBookings((data || []).filter((b) => b.status !== 'cancelled'));
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('Dashboard bookings load error:', err);
         toast.error('Could not load your bookings. Please try again later.');
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (!user) {
+      setBookings([]);
+      return;
+    }
+    loadBookings();
   }, [user]);
 
   const handleCancel = async (bookingId: string) => {
@@ -140,7 +181,7 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
                             <span className="text-sm font-bold text-[#F9F7F2]">₱{booking.total}</span>
                           </div>
                           <p className="text-sm text-[#F9F7F2]/60 uppercase tracking-wider mb-2">
-                            {formatDate(booking.checkIn)} • {booking.nights} Night(s)
+                            Check-in: {formatDate(booking.checkIn)} • Check-out: {formatDate(booking.checkOut)} • {booking.nights} Night(s)
                           </p>
                           {booking.status === 'pending_cancel' && (
                             <p className="text-xs font-semibold text-yellow-300 uppercase tracking-widest">

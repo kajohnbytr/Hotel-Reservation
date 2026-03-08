@@ -239,14 +239,14 @@ function AppContent() {
     guests: number,
     total: number
   ) => {
-    if (!user || !selectedRoomId) return;
+    if (!user || !selectedRoomId) return false;
 
     const token = localStorage.getItem('aurora_token');
     const room = ROOMS.find((r) => r.id === selectedRoomId);
 
     if (!token || !room) {
       toast.error('You are not logged in. Please sign in again.');
-      return;
+      return false;
     }
 
     try {
@@ -271,7 +271,7 @@ function AppContent() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data.message || 'Could not save reservation to server.');
-        return;
+        return false;
       }
 
       const newBooking: Booking = {
@@ -289,8 +289,10 @@ function AppContent() {
       setCurrentBooking(newBooking);
       setCurrentPage('confirmation');
       toast.success('Reservation Confirmed');
+      return true;
     } catch {
       toast.error('Could not save reservation to server.');
+      return false;
     }
   };
 
@@ -430,7 +432,9 @@ function AppContent() {
           document.body
         )}
       {renderPage()}
-      {(!user || user.role === 'guest') && <Chatbot onRecommend={handleAiRecommend} />}
+      {(!user || user.role === 'guest') && currentPage !== 'staff-login' && currentPage !== 'admin-login' && (
+        <Chatbot onRecommend={handleAiRecommend} />
+      )}
       <Toaster 
         theme="system" 
         position="top-center"

@@ -21,6 +21,8 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [ollamaModelStatus, setOllamaModelStatus] = useState<'unknown' | 'ok' | 'missing'>('unknown');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,6 +32,50 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   }, [messages, isOpen]);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/ai/health`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const online = Boolean(data?.ollama?.online);
+        setOllamaStatus(online ? 'online' : 'offline');
+        if (online) {
+          setOllamaModelStatus(data?.ollama?.modelAvailable === false ? 'missing' : 'ok');
+        } else {
+          setOllamaModelStatus('unknown');
+        }
+      } catch {
+        if (!cancelled) {
+          setOllamaStatus('offline');
+          setOllamaModelStatus('unknown');
+        }
+      }
+    };
+
+    setOllamaStatus('checking');
+    checkHealth();
+    const interval = setInterval(checkHealth, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [API_BASE, isOpen]);
+
+  const getChatSessionId = () => {
+    const key = 'aurora_chat_session_id';
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  };
 
   // Smoothly stream a bot response character by character
   const streamBotMessage = async (text: string, recommendedType: string | null) => {
@@ -66,59 +112,25 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   };
 
   // ================= TALK TO NLP CHATBOT (via backend) =================
-  const askNLP = async (message: string) => {
+  const askNLP = async (message: string): Promise<{ reply: string; type?: string }> => {
+    const sessionId = getChatSessionId();
     try {
       const res = await fetch(`${API_BASE}/api/ai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Chat-Session-Id": sessionId,
+        },
         body: JSON.stringify({ message })
       });
 
       const data = await res.json();
-      return data.reply ?? "I am currently offline. Please try again.";
+      return {
+        reply: data.reply ?? "I am currently offline. Please try again.",
+        type: data.type,
+      };
     } catch {
-      return "I am currently offline. Please try again.";
-    }
-  };
-
-  // ================= EXTRACT BOOKING INFO =================
-  const extractBookingInfo = (text: string) => {
-    const lower = text.toLowerCase();
-    const numbers = text.match(/\d+/g) || [];
-    let guests = 2;
-    let nights = 1;
-    let price = 500;
-
-    // "2 guests" / "for 2 people" / "2 people"
-    const guestMatch = lower.match(/(\d+)\s*(guest|people|person|adult|pax)/) || lower.match(/(?:for|party of)\s*(\d+)/);
-    if (guestMatch) guests = parseInt(guestMatch[1], 10) || guests;
-
-    // "3 nights" / "3 days" / "stay 2 nights"
-    const nightMatch = lower.match(/(\d+)\s*(night|day)/) || lower.match(/(?:stay|for)\s*(\d+)/);
-    if (nightMatch) nights = parseInt(nightMatch[1], 10) || nights;
-
-    // "budget 5000" / "under 300" / "price 200" / "₱1000"
-    const priceMatch = lower.match(/(?:budget|under|max|price|₱|php|peso)\s*(\d+)/i) || lower.match(/(\d+)\s*(?:budget|peso|php)/i);
-    if (priceMatch) price = parseInt(priceMatch[1], 10) || price;
-    else if (numbers.length >= 3) price = parseInt(numbers[2], 10) || price;
-    else if (numbers.length === 2) { guests = parseInt(numbers[0], 10) || guests; nights = parseInt(numbers[1], 10) || nights; }
-    else if (numbers.length === 1) guests = parseInt(numbers[0], 10) || guests;
-
-    return { guests: Math.min(10, Math.max(1, guests)), nights: Math.min(30, Math.max(1, nights)), price };
-  };
-
-  // ================= CALL AI RECOMMENDATION (via backend) =================
-  const callAI = async (bookingInfo: { guests: number; nights: number; price: number }) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/ai/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bookingInfo)
-      });
-      const data = await res.json();
-      return data;
-    } catch {
-      return { message: "I cannot access the recommendation system right now." };
+      return { reply: "I am currently offline. Please try again." };
     }
   };
 
@@ -134,30 +146,10 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     await wait(900);
 
     let botResponse = "";
-    const lowerInput = userMessage.toLowerCase();
-
-    // ===== DETECT BOOKING / RECOMMENDATION REQUEST =====
     let recommendedType: string | null = null;
-    if (
-      lowerInput.includes("guest") ||
-      lowerInput.includes("people") ||
-      lowerInput.includes("person") ||
-      lowerInput.includes("night") ||
-      lowerInput.includes("budget") ||
-      lowerInput.includes("stay") ||
-      lowerInput.includes("recommend") ||
-      lowerInput.includes("suggest")
-    ) {
-      const bookingInfo = extractBookingInfo(userMessage);
-      const data = await callAI(bookingInfo);
-      botResponse = typeof data === 'string' ? data : (data?.message ?? data);
-      if (typeof data === 'object' && data?.type) recommendedType = data.type;
-    }
-
-    // ===== NORMAL CHAT =====
-    else {
-      botResponse = await askNLP(userMessage);
-    }
+    const data = await askNLP(userMessage);
+    botResponse = data.reply;
+    if (data.type) recommendedType = data.type;
 
     await streamBotMessage(botResponse, recommendedType);
   };
@@ -184,9 +176,26 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
             className="fixed bottom-8 right-8 z-50 w-80 sm:w-96 h-[500px] bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 shadow-2xl flex flex-col overflow-hidden rounded-2xl"
           >
             <div className="p-4 bg-[#0A2342] text-[#F9F7F2] flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#D4AF37]" />
-                <span className="font-serif tracking-wide">Aurora Assistant</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+                  <span className="font-serif tracking-wide">Aurora Assistant</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#F9F7F2]/70">
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      ollamaStatus === 'online'
+                        ? 'bg-emerald-400'
+                        : ollamaStatus === 'offline'
+                          ? 'bg-red-400'
+                          : 'bg-amber-300 animate-pulse'
+                    }`}
+                  />
+                  <span>
+                    Ollama: {ollamaStatus}
+                    {ollamaStatus === 'online' && ollamaModelStatus === 'missing' ? ' (model missing)' : ''}
+                  </span>
+                </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="text-[#F9F7F2]/70 hover:text-white">
                 <X className="w-5 h-5" />

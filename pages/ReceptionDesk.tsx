@@ -194,7 +194,7 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
           </div>
 
           {activeTab === 'reservations' && (
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-56">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
               <input
                 type="text"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Room } from '../lib/store';
 
@@ -97,6 +97,14 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
     amenityInput: '',
     amenities: [] as string[],
   });
+  const [staffForm, setStaffForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+  });
+  const [creatingStaff, setCreatingStaff] = useState(false);
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
 
@@ -316,6 +324,54 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
     }
   };
 
+  const handleCreateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+
+    const firstName = staffForm.firstName.trim();
+    const lastName = staffForm.lastName.trim();
+    const email = staffForm.email.trim().toLowerCase();
+    const password = staffForm.password;
+
+    if (!firstName || !lastName || !email || !password) {
+      toast.error('Please fill out first name, last name, email, and password.');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters.');
+      return;
+    }
+
+    setCreatingStaff(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/create-staff`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ firstName, lastName, email, password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not create staff account.');
+        return;
+      }
+
+      toast.success('Staff account created successfully.');
+      setStaffForm({ firstName: '', lastName: '', email: '', password: '' });
+      setIsStaffModalOpen(false);
+      if (token && activeTab === 'guests') {
+        fetchGuestsWithOnlineStatus(token);
+      }
+    } catch {
+      toast.error('Could not create staff account. Please try again.');
+    } finally {
+      setCreatingStaff(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F9F7F2] dark:bg-[#0A2342] pt-24 px-6 pb-12">
       <div className="max-w-7xl mx-auto">
@@ -356,17 +412,17 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
           </div>
 
           {activeTab === 'reservations' && (
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
+            <div className="relative w-48 sm:w-52">
               <input
                 type="text"
-                placeholder="Search Name, ID..."
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
               />
             </div>
           )}
+
         </div>
 
         {/* Reservations tab */}
@@ -543,22 +599,25 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
 )}
         {/* Users tab */}
        {activeTab === 'guests' && (
+    <div className="space-y-6">
   <div className="bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-lg shadow overflow-hidden">
     <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex items-center justify-between gap-4">
-      <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Registered Users</h2>
+      <button
+        type="button"
+        onClick={() => setIsStaffModalOpen(true)}
+        className="h-11 px-6 rounded-lg bg-[#0A2342] dark:bg-[#153a66] text-[#F9F7F2] text-sm font-bold uppercase tracking-widest hover:bg-[#153a66] dark:hover:bg-[#D4AF37] dark:hover:text-[#0A2342] transition-colors"
+      >
+        + Add Staff
+      </button>
 
-      <div className="flex justify-end w-1/2">
-        <div className="relative w-full max-w-xs">
-          {/* Search icon properly aligned */}
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0A2342]/50 dark:text-[#F9F7F2]/50 pointer-events-none" />
-
-          {/* Input */}
+      <div className="flex justify-end">
+        <div className="relative w-56">
           <input
             type="text"
             value={guestSearch}
             onChange={(e) => setGuestSearch(e.target.value)}
             placeholder="Search users..."
-            className="w-full h-10 pl-10 pr-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] text-sm text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 transition"
+            className="w-full h-10 px-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] text-sm text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 transition"
           />
         </div>
       </div>
@@ -629,6 +688,67 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
         </tbody>
       </table>
     </div>
+  </div>
+
+  {isStaffModalOpen && (
+    <div
+      className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={() => setIsStaffModalOpen(false)}
+    >
+      <div
+        className="w-full max-w-md bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/20 rounded-2xl shadow-2xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">Create Staff Account</h3>
+        <form onSubmit={handleCreateStaff} className="space-y-3">
+          <input
+            type="text"
+            placeholder="First name"
+            value={staffForm.firstName}
+            onChange={(e) => setStaffForm((prev) => ({ ...prev, firstName: e.target.value }))}
+            className="w-full h-10 px-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] text-sm text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 dark:placeholder-[#F9F7F2]/60 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
+          />
+          <input
+            type="text"
+            placeholder="Last name"
+            value={staffForm.lastName}
+            onChange={(e) => setStaffForm((prev) => ({ ...prev, lastName: e.target.value }))}
+            className="w-full h-10 px-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] text-sm text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 dark:placeholder-[#F9F7F2]/60 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={staffForm.email}
+            onChange={(e) => setStaffForm((prev) => ({ ...prev, email: e.target.value }))}
+            className="w-full h-10 px-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] text-sm text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 dark:placeholder-[#F9F7F2]/60 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
+          />
+          <input
+            type="password"
+            placeholder="Password (min 8 chars)"
+            value={staffForm.password}
+            onChange={(e) => setStaffForm((prev) => ({ ...prev, password: e.target.value }))}
+            className="w-full h-10 px-3 rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] text-sm text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 dark:placeholder-[#F9F7F2]/60 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
+          />
+          <div className="pt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsStaffModalOpen(false)}
+              className="h-10 px-4 rounded-lg border border-[#0A2342]/25 dark:border-[#F9F7F2]/25 text-[#0A2342] dark:text-[#F9F7F2] text-xs font-bold uppercase tracking-widest hover:bg-[#0A2342]/5 dark:hover:bg-[#F9F7F2]/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={creatingStaff}
+              className="h-10 px-4 rounded-lg bg-[#0A2342] dark:bg-[#153a66] text-[#F9F7F2] text-xs font-bold uppercase tracking-widest hover:bg-[#153a66] dark:hover:bg-[#D4AF37] dark:hover:text-[#0A2342] transition-colors disabled:opacity-70"
+            >
+              {creatingStaff ? 'Creating...' : 'Create Staff'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )}
   </div>
 )}
 

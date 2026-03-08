@@ -16,7 +16,7 @@ interface OccupiedRange {
 
 interface BookingPageProps {
   room: Room;
-  onConfirm: (hash: string, checkIn: string, checkOut: string, nights: number, guests: number, total: number) => void;
+  onConfirm: (hash: string, checkIn: string, checkOut: string, nights: number, guests: number, total: number) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -51,6 +51,10 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
   const [nights, setNights] = useState(1);
   const [occupiedRanges, setOccupiedRanges] = useState<OccupiedRange[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
+  const [dailyBookingsCount, setDailyBookingsCount] = useState(0);
+  const [dailyBookingsLimit, setDailyBookingsLimit] = useState(2);
+  const [dailyLimitReached, setDailyLimitReached] = useState(false);
+  const [limitLoading, setLimitLoading] = useState(true);
 
   useEffect(() => {
     const from = new Date();
@@ -64,6 +68,33 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
       .catch(() => setOccupiedRanges([]))
       .finally(() => setAvailabilityLoading(false));
   }, [room.id]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('aurora_token');
+    if (!token) {
+      setLimitLoading(false);
+      return;
+    }
+
+    fetch(`${API_BASE}/api/bookings/user/stats`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const current = Number(data?.dailyBookings?.current ?? 0);
+        const limit = Number(data?.dailyBookings?.limit ?? 2);
+        const canBook = Boolean(data?.dailyBookings?.canBook ?? current < limit);
+        setDailyBookingsCount(current);
+        setDailyBookingsLimit(limit);
+        setDailyLimitReached(!canBook);
+      })
+      .catch(() => {
+        setDailyLimitReached(false);
+      })
+      .finally(() => setLimitLoading(false));
+  }, []);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -108,6 +139,10 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
 
   const handleBook = async (e: FormEvent) => {
     e.preventDefault();
+    if (dailyLimitReached) {
+      toast.error(`Daily reservation limit reached (${dailyBookingsLimit}/${dailyBookingsLimit}). Please try again tomorrow.`);
+      return;
+    }
     if (guests > room.maxGuests) {
       toast.error(`Maximum guests for this room is ${room.maxGuests}`);
       return;
@@ -123,7 +158,12 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
     setStep('processing');
 
     const total = room.price * nights;
-    onConfirm('', checkIn, checkOut, nights, guests, total);
+    const success = await onConfirm('', checkIn, checkOut, nights, guests, total);
+    if (!success) {
+      setTimeout(() => {
+        setStep('details');
+      }, 3000);
+    }
   };
 
   const handleRangeSelect = (range: { from?: Date; to?: Date } | undefined) => {
@@ -210,17 +250,32 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
               Your reservation may be recorded on the blockchain for a tamper-proof record. No payment is collected here—this is reservation only.
             </p>
 
+            {limitLoading ? (
+              <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/70">
+                Checking daily booking limit...
+              </p>
+            ) : dailyLimitReached ? (
+              <p className="text-xs text-[#B42318] dark:text-[#F59E8B] font-semibold">
+                You already used {dailyBookingsCount}/{dailyBookingsLimit} reservations today. Confirm reservation is locked until tomorrow.
+              </p>
+            ) : (
+              <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/70">
+                Today: {dailyBookingsCount}/{dailyBookingsLimit} reservations used.
+              </p>
+            )}
+
             <div className="flex gap-4 pt-6">
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 py-3 text-[#0A2342]/60 dark:text-[#F9F7F2]/70 hover:text-[#0A2342] dark:hover:text-[#F9F7F2] transition-colors text-sm font-bold uppercase tracking-wider rounded-lg"
+                className="flex-1 py-3 text-[#0A2342]/60 dark:text-[#F9F7F2]/70 hover:text-[#F9F7F2] dark:hover:text-[#F9F7F2] transition-colors text-sm font-bold uppercase tracking-wider rounded-lg"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342] py-4 hover:bg-[#153a66] dark:hover:bg-[#C99E2E] transition-colors uppercase tracking-widest text-xs font-bold shadow-lg rounded-lg"
+                disabled={dailyLimitReached || limitLoading}
+                className="flex-1 bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#F9F7F2] py-4 hover:bg-[#153a66] dark:hover:bg-[#C99E2E] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#0A2342] dark:disabled:hover:bg-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold shadow-lg rounded-lg"
               >
                 Confirm reservation
               </button>
