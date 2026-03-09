@@ -35,6 +35,18 @@ const userSchema = new mongoose.Schema({
     verificationToken: String,
     verificationTokenExpire: Date,
     // ───────────────────────────────────────────────────────
+    lastLogin: {
+        type: Date,
+        default: null,
+    },
+    lastActivity: {
+        type: Date,
+        default: null,
+    },
+    isOnline: {
+        type: Boolean,
+        default: false,
+    },
 }, {timestamps: true});
 
 userSchema.pre('save', async function(next) {

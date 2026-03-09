@@ -106,7 +106,7 @@ export function StaffLogin({
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md bg-white dark:bg-[#0A2342]/80 border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 rounded-xl shadow-xl p-8"
+          className="w-full max-w-md bg-white dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/20 rounded-xl shadow-xl p-8"
         >
           <div className="flex justify-center mb-6">
             <div className="w-14 h-14 rounded-full bg-[#0A2342] dark:bg-[#153a66] flex items-center justify-center">
@@ -116,7 +116,7 @@ export function StaffLogin({
           <h1 className="text-2xl font-bold text-[#0A2342] dark:text-[#F9F7F2] text-center mb-1">
             Staff Portal
           </h1>
-          <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 uppercase tracking-widest text-center mb-8">
+          <p className="text-xs text-[#334155] dark:text-white uppercase tracking-widest text-center mb-8">
             Restricted Area
           </p>
 
@@ -131,7 +131,7 @@ export function StaffLogin({
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(''); }}
                 placeholder="your@email.com"
-                className="w-full bg-[#F5F0E8] dark:bg-[#05152a] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
+                className={`w-full border py-3 px-4 rounded focus:outline-none focus:ring-2 ${theme === 'dark' ? 'bg-[#05152a] border-[#F9F7F2]/30 text-white placeholder:text-white/90 focus:ring-[#D4AF37]/30' : 'bg-[#F8FAFC] border-[#0A2342]/25 text-[#0A2342] placeholder-[#64748B] focus:ring-[#0A2342]/30'}`}
               />
             </div>
 
@@ -145,7 +145,7 @@ export function StaffLogin({
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(''); }}
                 placeholder="••••••••"
-                className="w-full bg-[#F5F0E8] dark:bg-[#05152a] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] placeholder-[#0A2342]/50 rounded focus:outline-none focus:ring-2 focus:ring-[#0A2342]/30 dark:focus:ring-[#D4AF37]/30"
+                className={`w-full border py-3 px-4 rounded focus:outline-none focus:ring-2 ${theme === 'dark' ? 'bg-[#05152a] border-[#F9F7F2]/30 text-white placeholder:text-white/90 focus:ring-[#D4AF37]/30' : 'bg-[#F8FAFC] border-[#0A2342]/25 text-[#0A2342] placeholder-[#64748B] focus:ring-[#0A2342]/30'}`}
               />
             </div>
 
@@ -159,7 +159,7 @@ export function StaffLogin({
               <button
                 type="button"
                 onClick={() => (onNavigateToHome ? onNavigateToHome() : onNavigate?.('home'))}
-                className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider hover:underline"
+                className={`text-sm font-semibold uppercase tracking-wider hover:underline ${theme === 'dark' ? 'text-white' : 'text-[#0A2342]'}`}
               >
                 Back
               </button>

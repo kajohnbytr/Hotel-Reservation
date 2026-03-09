@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { Room } from '../lib/store';
+import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -13,6 +14,7 @@ interface Reservation {
   nights: number;
   guests: number;
   total: number;
+   status: 'confirmed' | 'cancelled' | 'pending_cancel';
 }
 
 interface RoomStatus {
@@ -46,11 +48,52 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
       signal: abort.signal,
     })
       .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setReservations(Array.isArray(data) ? data : []))
+      .then((data) => {
+        if (!Array.isArray(data)) {
+          setReservations([]);
+          return;
+        }
+        const mapped: Reservation[] = data.map((b: any) => ({
+          id: b.id,
+          guestName: b.guestName,
+          room: b.roomName || b.room,
+          checkIn: b.checkIn,
+          checkOut: b.checkOut,
+          nights: b.nights,
+          guests: b.guests,
+          total: b.total,
+          status: b.status || 'confirmed',
+        }));
+        setReservations(mapped);
+      })
       .catch(() => setReservations([]))
       .finally(() => setLoading(false));
     return () => abort.abort();
   }, [token, searchQuery]);
+
+  const handleApproveCancellation = async (id: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/bookings/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not confirm cancellation.');
+        return;
+      }
+      setReservations((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'cancelled' } : r))
+      );
+      toast.success('Cancellation confirmed.');
+    } catch (error) {
+      console.error('Approve cancellation error:', error);
+      toast.error('Could not confirm cancellation. Please try again.');
+    }
+  };
 
   const toLocalDateString = (d: Date) => {
     const y = d.getFullYear();
@@ -151,7 +194,7 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
           </div>
 
           {activeTab === 'reservations' && (
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full sm:w-56">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0A2342]/40 dark:text-[#F9F7F2]/40" />
               <input
                 type="text"
@@ -177,6 +220,8 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
                     <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Nights</th>
                     <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Guests</th>
                     <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Total</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -204,9 +249,37 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
                         <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.checkOut}</td>
                         <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.nights}</td>
                         <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">{res.guests}</td>
-                        <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-semibold">
-                          ₱{Number(res.total).toFixed(2)}
-                        </td>
+                      <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2] font-semibold">
+                        ₱{Number(res.total).toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">
+                        {res.status === 'cancelled' ? (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                            Cancelled
+                          </span>
+                        ) : res.status === 'pending_cancel' ? (
+                          <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-800">
+                            Pending cancel
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                            Confirmed
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-[#0A2342] dark:text-[#F9F7F2]">
+                        {res.status === 'pending_cancel' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleApproveCancellation(res.id)}
+                            className="inline-flex items-center rounded-md border border-red-400 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-red-700 hover:bg-red-500/10"
+                          >
+                            Confirm cancel
+                          </button>
+                        ) : (
+                          <span className="text-xs text-[#0A2342]/50 dark:text-[#F9F7F2]/50">—</span>
+                        )}
+                      </td>
                       </tr>
                     ))
                   )}

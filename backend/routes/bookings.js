@@ -6,7 +6,11 @@ import { recordBookingOnChain } from '../blockchain.js';
 
 const router = express.Router();
 
-// List bookings (for reception; optional search)
+// Reservation limit configuration
+const MAX_CONCURRENT_BOOKINGS = parseInt(process.env.MAX_CONCURRENT_BOOKINGS || '3', 10);
+const MAX_BOOKINGS_PER_DAY = parseInt(process.env.MAX_BOOKINGS_PER_DAY || '2', 10);
+
+// List bookings (for reception/admin; optional search across all guests)
 router.get('/', protect, async (req, res) => {
   try {
     const search = (req.query.search || '').toString().trim();
@@ -26,7 +30,7 @@ router.get('/', protect, async (req, res) => {
         await AuditLog.create({
           userId: req.user._id,
           userEmail: req.user.email,
-          userName: staffName,
+          userName: staffName || req.user.email,
           role: 'staff',
           action: 'staff_viewed_reservations',
           details: search ? `Viewed reservations (search: ${search})` : 'Viewed reservations list',
@@ -38,17 +42,50 @@ router.get('/', protect, async (req, res) => {
     const list = bookings.map((b) => ({
       id: b._id.toString(),
       guestName: b.guestName,
-      room: b.roomName,
+      roomId: b.roomId,
+      roomName: b.roomName,
       checkIn: b.checkIn.toISOString().split('T')[0],
       checkOut: b.checkOut.toISOString().split('T')[0],
       nights: b.nights,
       guests: b.guests,
       total: b.total,
+      status: b.status || 'confirmed',
       txHash: b.txHash || '',
     }));
     res.json(list);
   } catch (error) {
     console.error('List bookings error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// List bookings for the currently authenticated guest (Dashboard)
+router.get('/my', protect, async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      userId: req.user._id,
+      status: { $in: ['confirmed', 'pending_cancel'] },
+    })
+      .sort({ checkIn: -1 })
+      .lean();
+
+    const list = bookings.map((b) => ({
+      id: b._id.toString(),
+      guestName: b.guestName,
+      roomId: b.roomId,
+      roomName: b.roomName,
+      checkIn: b.checkIn.toISOString().split('T')[0],
+      checkOut: b.checkOut.toISOString().split('T')[0],
+      nights: b.nights,
+      guests: b.guests,
+      total: b.total,
+      status: b.status || 'confirmed',
+      txHash: b.txHash || '',
+    }));
+
+    res.json(list);
+  } catch (error) {
+    console.error('List my bookings error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
@@ -72,6 +109,35 @@ router.post('/', protect, async (req, res) => {
     if (overlapping) {
       return res.status(409).json({ message: 'This room is not available for the selected dates. Please choose different dates.' });
     }
+
+    // Check concurrent bookings limit
+    const concurrentBookings = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      checkIn: { $lt: checkOutDate },
+      checkOut: { $gt: checkInDate },
+    });
+    if (concurrentBookings >= MAX_CONCURRENT_BOOKINGS) {
+      return res.status(429).json({ 
+        message: `You can only have up to ${MAX_CONCURRENT_BOOKINGS} concurrent reservations. Please cancel an existing booking before making a new one.` 
+      });
+    }
+
+    // Check daily bookings limit
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const dailyBookings = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+    if (dailyBookings >= MAX_BOOKINGS_PER_DAY) {
+      return res.status(429).json({ 
+        message: `You have reached the maximum of ${MAX_BOOKINGS_PER_DAY} bookings per day. Please try again tomorrow.` 
+      });
+    }
+
     const bookingData = {
       guestName,
       roomId,
@@ -89,53 +155,54 @@ router.post('/', protect, async (req, res) => {
     const booking = await Booking.create(bookingData);
 
     try {
-      const guestName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const guestName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
       const checkInStr = checkInDate.toISOString().split('T')[0];
       const checkOutStr = checkOutDate.toISOString().split('T')[0];
+      const creatorRole = (req.user.role === 'admin' || req.user.role === 'staff') ? req.user.role : 'guest';
       await AuditLog.create({
         userId: req.user._id,
-        userEmail: req.user.email,
+        userEmail,
         userName: guestName,
-        role: 'guest',
+        role: creatorRole,
         action: 'guest_booking',
         details: `Reservation: ${roomName}, ${checkInStr} to ${checkOutStr} (${nights} night(s))`,
       });
-      console.log('[Audit] guest_booking recorded for', req.user.email);
     } catch (err) {
-      console.error('[Audit] guest_booking:', err.message);
+      console.error('[Audit] guest_booking:', err.message, err);
     }
 
-    // Only record on-chain if the client did not already send a txHash
+    // Record on-chain if the client did not already send a txHash; wait so response includes real txHash
     if (!bookingData.txHash) {
-      recordBookingOnChain({
-        guestName: booking.guestName,
-        roomName: booking.roomName,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        total: booking.total,
-      }).then(async (txHash) => {
+      try {
+        const txHash = await recordBookingOnChain({
+          guestName: booking.guestName,
+          roomName: booking.roomName,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          total: booking.total,
+        });
         if (txHash) {
           console.log('Booking recorded on chain, tx=', txHash);
-          try {
-            booking.txHash = txHash;
-            await booking.save();
-          } catch (err) {
-            console.error('Failed to save txHash in booking record', err);
-          }
+          booking.txHash = txHash;
+          await booking.save();
         }
-      }).catch((err) => {
+      } catch (err) {
         console.error('Failed to record booking on chain', err);
-      });
+      }
     }
+
     res.status(201).json({
       id: booking._id.toString(),
       guestName: booking.guestName,
-      room: booking.roomName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
       checkIn: booking.checkIn.toISOString().split('T')[0],
       checkOut: booking.checkOut.toISOString().split('T')[0],
       nights: booking.nights,
       guests: booking.guests,
       total: booking.total,
+      status: booking.status || 'confirmed',
       txHash: booking.txHash || '',
     });
   } catch (error) {
@@ -191,7 +258,7 @@ router.get('/availability', protect, async (req, res) => {
         await AuditLog.create({
           userId: req.user._id,
           userEmail: req.user.email,
-          userName: staffName,
+          userName: staffName || req.user.email,
           role: 'staff',
           action: 'staff_viewed_availability',
           details: `Viewed room availability for ${dateStr}`,
@@ -203,6 +270,188 @@ router.get('/availability', protect, async (req, res) => {
     res.json({ occupiedRoomIds: occupied });
   } catch (error) {
     console.error('Availability error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Get user's booking limits and current usage
+router.get('/user/stats', protect, async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    // Count concurrent bookings (overlapping with today)
+    const concurrentCount = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      checkIn: { $lt: now },
+      checkOut: { $gt: now },
+    });
+
+    // Count bookings made today
+    const dailyCount = await Booking.countDocuments({
+      userId: req.user._id,
+      status: 'confirmed',
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+
+    res.json({
+      concurrentBookings: {
+        current: concurrentCount,
+        limit: MAX_CONCURRENT_BOOKINGS,
+        canBook: concurrentCount < MAX_CONCURRENT_BOOKINGS,
+      },
+      dailyBookings: {
+        current: dailyCount,
+        limit: MAX_BOOKINGS_PER_DAY,
+        canBook: dailyCount < MAX_BOOKINGS_PER_DAY,
+      },
+    });
+  } catch (error) {
+    console.error('Booking stats error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Guest requests cancellation – booking enters pending_cancel until staff confirms
+router.post('/:id/request-cancel', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (booking.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only request cancellation for your own bookings.' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ message: 'This booking is already cancelled.' });
+    }
+
+    if (booking.status === 'pending_cancel') {
+      return res.status(200).json({
+        id: booking._id.toString(),
+        guestName: booking.guestName,
+        roomId: booking.roomId,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn.toISOString().split('T')[0],
+        checkOut: booking.checkOut.toISOString().split('T')[0],
+        nights: booking.nights,
+        guests: booking.guests,
+        total: booking.total,
+        status: booking.status,
+        txHash: booking.txHash || '',
+      });
+    }
+
+    booking.status = 'pending_cancel';
+    await booking.save();
+
+    try {
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const actorName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
+      const checkInStr = booking.checkIn.toISOString().split('T')[0];
+      const checkOutStr = booking.checkOut.toISOString().split('T')[0];
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail,
+        userName: actorName,
+        role: 'guest',
+        action: 'booking_cancel_request',
+        details: `Guest requested cancellation: ${booking.roomName}, ${checkInStr} to ${checkOutStr} (${booking.nights} night(s))`,
+      });
+    } catch (err) {
+      console.error('[Audit] booking_cancel_request:', err.message);
+    }
+
+    res.json({
+      id: booking._id.toString(),
+      guestName: booking.guestName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn.toISOString().split('T')[0],
+      checkOut: booking.checkOut.toISOString().split('T')[0],
+      nights: booking.nights,
+      guests: booking.guests,
+      total: booking.total,
+      status: booking.status,
+      txHash: booking.txHash || '',
+    });
+  } catch (error) {
+    console.error('Request cancel booking error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Staff/admin confirms cancellation – booking becomes cancelled
+router.post('/:id/cancel', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const isStaffOrAdmin = req.user.role === 'staff' || req.user.role === 'admin';
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({ message: 'Only staff or admin can confirm cancellations.' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(200).json({
+        id: booking._id.toString(),
+        guestName: booking.guestName,
+        roomId: booking.roomId,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn.toISOString().split('T')[0],
+        checkOut: booking.checkOut.toISOString().split('T')[0],
+        nights: booking.nights,
+        guests: booking.guests,
+        total: booking.total,
+        status: booking.status,
+        txHash: booking.txHash || '',
+      });
+    }
+
+    booking.status = 'cancelled';
+    await booking.save();
+
+    try {
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const actorName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
+      const checkInStr = booking.checkIn.toISOString().split('T')[0];
+      const checkOutStr = booking.checkOut.toISOString().split('T')[0];
+      const role = req.user.role || 'staff';
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail,
+        userName: actorName,
+        role,
+        action: 'booking_cancelled',
+        details: `Cancelled reservation: ${booking.roomName}, ${checkInStr} to ${checkOutStr} (${booking.nights} night(s))`,
+      });
+    } catch (err) {
+      console.error('[Audit] booking_cancelled:', err.message);
+    }
+
+    res.json({
+      id: booking._id.toString(),
+      guestName: booking.guestName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn.toISOString().split('T')[0],
+      checkOut: booking.checkOut.toISOString().split('T')[0],
+      nights: booking.nights,
+      guests: booking.guests,
+      total: booking.total,
+      status: booking.status,
+      txHash: booking.txHash || '',
+    });
+  } catch (error) {
+    console.error('Cancel booking error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });

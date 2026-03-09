@@ -71,10 +71,31 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    const normalizedRole =
-      role === 'staff' ? 'staff' :
-      role === 'admin' ? 'admin' :
-      'guest';
+
+    const requestedRole = (role || 'guest').toLowerCase();
+
+    // First-admin policy:
+    // - If no admin exists yet, only admin registration is allowed.
+    // - After an admin exists, guests can self-register but additional admins are blocked.
+    let userRole = 'guest';
+    const adminExists = await User.findOne({ role: 'admin' });
+
+    if (!adminExists) {
+      if (requestedRole !== 'admin') {
+        return res.status(403).json({
+          message: 'System setup required. Please create an admin account first before registering other users.',
+        });
+      }
+      userRole = 'admin';
+    } else if (requestedRole === 'admin') {
+      return res.status(403).json({
+        message: 'An admin account already exists. You cannot create another admin account via public registration.',
+      });
+    } else if (requestedRole === 'staff') {
+      userRole = 'guest';
+    } else {
+      userRole = 'guest';
+    }
 
     // Generate raw token and hashed version to store
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -85,25 +106,25 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       lastName,
       email,
       password,
-      role: normalizedRole,
+      role: userRole,
       isVerified: false,
       verificationToken: hashedToken,
       verificationTokenExpire: Date.now() + 24 * 60 * 60 * 1000,
     });
 
     try {
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
       await AuditLog.create({
         userId: user._id,
-        userEmail: user.email,
+        userEmail,
         userName,
-        role: user.role || normalizedRole,
+        role: userRole,
         action: 'signup',
-        details: `New ${normalizedRole} signed up`,
+        details: `New ${userRole} signed up`,
       });
-      console.log('[Audit] signup recorded for', user.email);
     } catch (err) {
-      console.error('[Audit] Failed to record signup:', err.message);
+      console.error('[Audit] Failed to record signup:', err.message, err);
     }
 
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -270,24 +291,32 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     }
 
     clearLoginAttempts(email);
+
+    // Update last login/activity and mark user online
+    const now = new Date();
+    user.lastLogin = now;
+    user.lastActivity = now;
+    user.isOnline = true;
+    await user.save();
+
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
 
     try {
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-      const role = user.role || 'guest';
+      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
+      const role = (user.role === 'admin' || user.role === 'staff') ? user.role : 'guest';
       const action = role === 'admin' ? 'admin_login' : role === 'staff' ? 'staff_login' : 'guest_login';
       await AuditLog.create({
         userId: user._id,
-        userEmail: user.email,
+        userEmail,
         userName,
         role,
         action,
         details: `${role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Guest'} logged in`,
       });
-      console.log('[Audit]', action, 'recorded for', user.email);
     } catch (err) {
-      console.error('[Audit] Failed to record login:', err.message);
+      console.error('[Audit] Failed to record login:', err.message, err);
     }
 
     res.status(200).json({
@@ -415,6 +444,32 @@ router.post('/reset-password', authLimiter, resetPasswordValidation, async (req,
 // Current user (protected)
 router.get('/me', protect, async (req, res) => {
   res.status(200).json(req.user);
+});
+
+// Logout (protected)
+router.post('/logout', protect, async (req, res) => {
+  try {
+    const now = new Date();
+    await User.updateOne(
+      { _id: req.user._id },
+      { lastActivity: now, isOnline: false }
+    );
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Check if an admin account exists (public, no auth required)
+router.get('/admin-exists', async (req, res) => {
+  try {
+    const adminExists = await User.findOne({ role: 'admin' });
+    res.json({ adminExists: !!adminExists });
+  } catch (error) {
+    console.error('Check admin error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
 });
 
 function generateToken(id, expiresIn = ACCESS_TOKEN_EXPIRY) {

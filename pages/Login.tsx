@@ -21,6 +21,8 @@ export function Login({
   const [hasCredentialError, setHasCredentialError] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState<number | null>(null);
+  const [adminSetupRequired, setAdminSetupRequired] = useState(false);
+  const [adminCheckDone, setAdminCheckDone] = useState(false);
 
   // Forgot password
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -40,6 +42,23 @@ export function Login({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showForgotModal]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/users/admin-exists`)
+      .then((res) => (res.ok ? res.json() : { adminExists: true }))
+      .then((data) => {
+        if (cancelled) return;
+        setAdminSetupRequired(!data?.adminExists);
+        setAdminCheckDone(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminCheckDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Countdown when locked out
   useEffect(() => {
@@ -154,6 +173,10 @@ export function Login({
     e.preventDefault();
     setError('');
     setHasCredentialError(false);
+    if (adminSetupRequired) {
+      setError('System setup required: no admin account exists yet.');
+      return;
+    }
     if (lockoutSecondsLeft != null && lockoutSecondsLeft > 0) return;
     setIsLoading(true);
     try {
@@ -216,6 +239,12 @@ export function Login({
           <h1 className="text-3xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-2">Sign In</h1>
           <p className="text-[#0A2342]/50 dark:text-[#F9F7F2]/70 text-xs uppercase tracking-widest">Access your account</p>
         </div>
+
+        {adminSetupRequired && adminCheckDone && (
+          <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            System setup required: <strong>no admin account exists yet</strong>. Please ask the administrator to create the first admin account.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
@@ -281,7 +310,7 @@ export function Login({
 
           <button
             type="submit"
-            disabled={isLoading || (lockoutSecondsLeft != null && lockoutSecondsLeft > 0)}
+            disabled={adminSetupRequired || isLoading || (lockoutSecondsLeft != null && lockoutSecondsLeft > 0)}
             className="w-full bg-[#0A2342] hover:bg-[#153a66] text-[#F9F7F2] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] font-bold py-4 transition-colors disabled:opacity-70 uppercase tracking-widest text-xs rounded-lg"
           >
             {lockoutSecondsLeft != null && lockoutSecondsLeft > 0

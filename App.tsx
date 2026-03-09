@@ -15,7 +15,7 @@ import { BookingPage } from './pages/Booking';
 import { ConfirmationPage } from './pages/Confirmation';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
-import { ROOMS, getUser, logoutUser, saveBooking, User, Booking, mapApiRoomToRoom, Room, isSessionExpired } from './lib/store';
+import { ROOMS, getUser, logoutUser, User, Booking, mapApiRoomToRoom, Room, isSessionExpired } from './lib/store';
 import { ThemeProvider } from './lib/theme';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
@@ -27,6 +27,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
   const [user, setUser] = useState<User | null>(null);
+  const [adminSetupRequired, setAdminSetupRequired] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [currentBooking, setCurrentBooking] = useState<Booking | null>(null);
   const [filteredRoomId, setFilteredRoomId] = useState<string | null>(null);
@@ -49,9 +50,9 @@ function AppContent() {
   const startInactivityTimer = useCallback(() => {
     clearInactivityTimer();
     if (!user) return;
-    inactivityTimerRef.current = setTimeout(() => {
+    inactivityTimerRef.current = setTimeout(async () => {
       inactivityTimerRef.current = null;
-      logoutUser();
+      await logoutUser();
       setUser(null);
       setCurrentPage('home');
       toast('Logged out due to inactivity.');
@@ -106,9 +107,9 @@ function AppContent() {
     fetch(`${API_BASE}/api/bookings`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
-    }).then((res) => {
+    }).then(async (res) => {
       if (res.status === 401) {
-        logoutUser();
+        await logoutUser();
         setUser(null);
         setCurrentPage('home');
       }
@@ -133,7 +134,9 @@ function AppContent() {
 
     const storedUser = getUser();
     if (storedUser && isSessionExpired()) {
-      logoutUser();
+      (async () => {
+        await logoutUser();
+      })();
       return;
     }
     if (storedUser) {
@@ -144,6 +147,38 @@ function AppContent() {
         setCurrentPage('admin-dashboard');
       }
     }
+  }, []);
+
+  // If no admin exists, force-logout anyone and block normal auth flows.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/users/admin-exists`);
+        const data = await res.json().catch(() => ({}));
+        const adminExists = !!data.adminExists;
+        if (cancelled) return;
+        setAdminSetupRequired(!adminExists);
+        if (!adminExists) {
+          const hasSession = !!localStorage.getItem('aurora_user') || !!localStorage.getItem('aurora_token');
+          if (hasSession) {
+            await logoutUser();
+            if (cancelled) return;
+            setUser(null);
+            setCurrentPage('login');
+            toast.error('System setup required: no admin account exists yet.');
+          } else if (currentPage !== 'login') {
+            setCurrentPage('login');
+          }
+        }
+      } catch {
+        // If the check fails, don't block usage.
+        if (!cancelled) setAdminSetupRequired(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Keep URL in sync: /login/staff and /login/admin only when on those pages; otherwise reset to /
@@ -179,8 +214,8 @@ function AppContent() {
     setCurrentPage('verify-email');
   };
 
-  const handleLogoutConfirm = () => {
-    logoutUser();
+  const handleLogoutConfirm = async () => {
+    await logoutUser();
     setUser(null);
     setCurrentPage('home');
     toast('Signed out.');
@@ -206,66 +241,72 @@ function AppContent() {
   };
 
   const handleBookingConfirm = async (
-    hash: string,
+    _hash: string,
     checkIn: string,
     checkOut: string,
     nights: number,
     guests: number,
     total: number
   ) => {
-    if (!user || !selectedRoomId) return;
-
-    const room = ROOMS.find((r) => r.id === selectedRoomId);
-    const newBooking: Booking = {
-      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
-      roomId: selectedRoomId,
-      userId: user.id,
-      date: checkIn,
-      nights,
-      totalPrice: total,
-      status: 'confirmed',
-      txHash: hash,
-      timestamp: new Date().toISOString(),
-    };
+    if (!user || !selectedRoomId) return false;
 
     const token = localStorage.getItem('aurora_token');
-    if (token && room) {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/bookings`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            guestName: user.name,
-            roomId: selectedRoomId,
-            roomName: room.name,
-            checkIn,
-            checkOut,
-            nights,
-            guests: guests || 1,
-            total,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          toast.error(data.message || 'Could not save reservation to server.');
-        } else {
-          const data = await res.json().catch(() => ({}));
-          if (data.txHash) {
-            newBooking.txHash = data.txHash;
-          }
-        }
-      } catch {
-        toast.error('Could not save reservation to server.');
-      }
+    const room = ROOMS.find((r) => r.id === selectedRoomId);
+
+    if (!token || !room) {
+      toast.error('You are not logged in. Please sign in again.');
+      return false;
     }
 
-    saveBooking(newBooking);
-    setCurrentBooking(newBooking);
-    setCurrentPage('confirmation');
-    toast.success('Reservation Confirmed');
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          guestName: user.name,
+          roomId: selectedRoomId,
+          roomName: room.name,
+          checkIn,
+          checkOut,
+          nights,
+          guests: guests || 1,
+          total,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not save reservation to server.');
+        return false;
+      }
+
+      const newBooking: Booking = {
+        id: data.id,
+        roomId: data.roomId,
+        userId: user.id,
+        date: data.checkIn,
+        nights: data.nights,
+        totalPrice: data.total,
+        status: 'confirmed',
+        txHash: data.txHash || '',
+        timestamp: new Date().toISOString(),
+      };
+
+      setCurrentBooking(newBooking);
+      setCurrentPage('confirmation');
+      toast.success('Reservation Confirmed');
+      return true;
+    } catch {
+      toast.error('Could not save reservation to server.');
+      return false;
+    }
+  };
+
+  const handleRoomUpdated = (updated: Room) => {
+    setRooms((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   };
 
   const handleAiRecommend = (type: string) => {
@@ -307,7 +348,12 @@ function AppContent() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
               {rooms.map(room => (
                 <div key={room.id} className={`${filteredRoomId === room.id ? 'ring-2 ring-[#D4AF37] offset-4' : ''}`}>
-                  <RoomCard room={room} onBook={handleBook} />
+                  <RoomCard
+                    room={room}
+                    onBook={handleBook}
+                    adminMode={user?.role === 'admin'}
+                    onRoomUpdated={handleRoomUpdated}
+                  />
                 </div>
               ))}
             </div>
@@ -412,7 +458,9 @@ function AppContent() {
           document.body
         )}
       {renderPage()}
-      <Chatbot onRecommend={handleAiRecommend} />
+      {(!user || user.role === 'guest') && currentPage !== 'staff-login' && currentPage !== 'admin-login' && (
+        <Chatbot onRecommend={handleAiRecommend} />
+      )}
       <Toaster 
         theme="system" 
         position="top-center"

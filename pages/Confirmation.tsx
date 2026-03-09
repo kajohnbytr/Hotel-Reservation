@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Booking, Room } from '../lib/store';
 import { formatDate } from '../lib/utils';
-import { Check, Download } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 
 interface ConfirmationPageProps {
   booking: Booking;
@@ -47,11 +47,40 @@ export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPa
         </div>
 
         <div className="mb-10">
-          <h4 className="text-[10px] uppercase tracking-widest text-[#F9F7F2]/40 mb-3 text-center">Blockchain Verification</h4>
-          <div className="bg-[#05152a] p-4 border border-[#D4AF37]/30 rounded-lg">
-            <code className="text-[10px] text-[#F9F7F2]/80 font-mono break-all block text-center">
-              {booking.txHash}
-            </code>
+          <h4 className="text-[10px] uppercase tracking-widest text-[#F9F7F2]/40 mb-3 text-center">
+            Blockchain Verification (optional)
+          </h4>
+          <div className="bg-[#05152a] p-4 border border-[#D4AF37]/30 rounded-lg flex flex-col gap-2">
+            {booking.txHash ? (
+              <>
+                <p className="text-[11px] text-[#F9F7F2]/70 text-center">
+                  This is the on-chain transaction ID for your reservation. You can share or store it for verification.
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <code className="flex-1 text-[11px] text-[#F9F7F2]/90 font-mono truncate">
+                    {booking.txHash.length > 22
+                      ? `${booking.txHash.slice(0, 12)}…${booking.txHash.slice(-8)}`
+                      : booking.txHash}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator?.clipboard && booking.txHash) {
+                        navigator.clipboard.writeText(booking.txHash).catch(() => {});
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[#D4AF37]/50 text-[10px] text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors"
+                  >
+                    <Copy className="w-3 h-3" />
+                    Copy
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-[#F9F7F2]/60 text-center">
+                This reservation is confirmed in the hotel system. Blockchain verification ID is not available for this booking.
+              </p>
+            )}
           </div>
         </div>
 
