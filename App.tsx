@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { Chatbot } from './components/Chatbot';
 import { Landing } from './pages/Landing';
 import { Signup } from './pages/Signup';
+import { VerifyEmail } from './pages/VerifyEmail';
 import StaffLogin from './pages/StaffLoginPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
@@ -31,6 +32,8 @@ function AppContent() {
   const [filteredRoomId, setFilteredRoomId] = useState<string | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [rooms, setRooms] = useState<Room[]>(ROOMS);
+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
+  const [pendingVerifyToken, setPendingVerifyToken] = useState('');
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const INACTIVITY_MINUTES = 5;
@@ -121,7 +124,11 @@ function AppContent() {
         setCurrentPage('admin-login');
       } else if (path === '/login/staff') {
         setCurrentPage('staff-login');
-      }
+      } else if (path === '/verify-email') {
+  const urlToken = new URLSearchParams(window.location.search).get('token');
+  if (urlToken) setPendingVerifyToken(urlToken);
+  setCurrentPage('verify-email');
+}
     }
 
     const storedUser = getUser();
@@ -146,6 +153,8 @@ function AppContent() {
       if (window.location.pathname !== '/login/staff') window.history.replaceState(null, '', '/login/staff');
     } else if (currentPage === 'admin-login') {
       if (window.location.pathname !== '/login/admin') window.history.replaceState(null, '', '/login/admin');
+    } else if (currentPage === 'verify-email') {
+      // keep token in URL — do not reset
     } else if (window.location.pathname !== '/') {
       window.history.replaceState(null, '', '/');
     }
@@ -165,9 +174,9 @@ function AppContent() {
     }
   };
 
-  const handleSignup = () => {
-    setCurrentPage('login');
-    toast.success('Account created. Please sign in.');
+  const handleSignup = (email: string) => {
+    setPendingVerifyEmail(email);
+    setCurrentPage('verify-email');
   };
 
   const handleLogoutConfirm = () => {
@@ -305,9 +314,26 @@ function AppContent() {
           </div>
         );
       case 'login':
-        return <Login onLogin={handleLogin} onNavigateToSignup={() => setCurrentPage('signup')} />;
+        return (
+          <Login
+            onLogin={handleLogin}
+            onNavigateToSignup={() => setCurrentPage('signup')}
+            onNavigateToVerify={(email) => {
+              setPendingVerifyEmail(email);
+              setCurrentPage('verify-email');
+            }}
+          />
+        );
       case 'signup':
         return <Signup onSignup={handleSignup} onNavigateToLogin={() => setCurrentPage('login')} />;
+      case 'verify-email':
+        return (
+          <VerifyEmail
+            pendingEmail={pendingVerifyEmail}
+            verifyToken={pendingVerifyToken}
+             onNavigateToLogin={() => setCurrentPage('login')}
+           />
+       );
       case 'staff-login':
         return (
           <StaffLogin

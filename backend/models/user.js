@@ -27,6 +27,14 @@ const userSchema = new mongoose.Schema({
         enum: ['guest', 'staff', 'admin'],
         default: 'guest',
     },
+    // ── Email verification ──────────────────────────────────
+    isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    verificationToken: String,
+    verificationTokenExpire: Date,
+    // ───────────────────────────────────────────────────────
 }, {timestamps: true});
 
 userSchema.pre('save', async function(next) {

@@ -7,15 +7,18 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export function Login({
   onLogin,
   onNavigateToSignup,
+  onNavigateToVerify,
 }: {
   onLogin: (user: any) => void;
   onNavigateToSignup: () => void;
+  onNavigateToVerify?: (email: string) => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasCredentialError, setHasCredentialError] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState<number | null>(null);
 
@@ -48,6 +51,7 @@ export function Login({
         if (next === 0) {
           setError('');
           setRemainingAttempts(null);
+          setHasCredentialError(false);
           return null;
         }
         return next;
@@ -55,6 +59,12 @@ export function Login({
     }, 1000);
     return () => clearInterval(t);
   }, [lockoutSecondsLeft]);
+
+  const clearErrors = () => {
+    setError('');
+    setHasCredentialError(false);
+    setRemainingAttempts(null);
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +153,7 @@ export function Login({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setHasCredentialError(false);
     if (lockoutSecondsLeft != null && lockoutSecondsLeft > 0) return;
     setIsLoading(true);
     try {
@@ -153,6 +164,10 @@ export function Login({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 403 && data.unverified) {
+          onNavigateToVerify?.(email);
+          return;
+        }
         if (res.status === 429) {
           setLockoutSecondsLeft(typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : 10 * 60);
           setError(data.message || 'Too many failed attempts. You can try again in 10 minutes.');
@@ -163,7 +178,8 @@ export function Login({
             setLockoutSecondsLeft(data.retryAfterSeconds);
             setError(data.message || 'Account temporarily locked. Try again later.');
           } else {
-            setError(data.message === 'Invalid email or password' ? 'Invalid email or password' : data.message || 'Not valid account');
+            setHasCredentialError(true);
+            setError('Incorrect Email or Password');
           }
         }
         setIsLoading(false);
@@ -171,6 +187,7 @@ export function Login({
       }
       setRemainingAttempts(null);
       setLockoutSecondsLeft(null);
+      setHasCredentialError(false);
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'User';
       const user = { id: String(data._id), email: data.email, name, role: (data.role === 'staff' ? 'staff' : 'guest') as 'guest' | 'staff' };
       localStorage.setItem('aurora_user', JSON.stringify(user));
@@ -178,7 +195,8 @@ export function Login({
       if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
       onLogin(user);
     } catch {
-      setError('Not valid account');
+      setHasCredentialError(true);
+      setError('Incorrect Email or Password');
     } finally {
       setIsLoading(false);
     }
@@ -206,8 +224,9 @@ export function Login({
               type="email"
               required
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); setRemainingAttempts(null); }}
+              onChange={(e) => { setEmail(e.target.value); clearErrors(); }}
               placeholder="you@gmail.com"
+              style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
             />
           </div>
@@ -218,8 +237,9 @@ export function Login({
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                onChange={(e) => { setPassword(e.target.value); clearErrors(); }}
                 placeholder="••••••••"
+                style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
               <button
