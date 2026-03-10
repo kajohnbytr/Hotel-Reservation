@@ -20,7 +20,7 @@ function deduplicateRepeatedWords(text: string): string {
 export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([
-    { role: 'bot', text: 'Welcome to Aurora. You can chat in English or Filipino. Ask about rooms, wifi, prices, or reservations, then share your budget and number of guests for recommendations.' },
+    { role: 'bot', text: 'Welcome to Aurora. Ask about rooms, prices, or reservations, then share your budget and number of guests for recommendations.' },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);

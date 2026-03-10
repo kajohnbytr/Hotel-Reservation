@@ -14,6 +14,85 @@ import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 
 const router = express.Router();
+const VERIFICATION_TOKEN_TTL_MS = 30 * 60 * 1000;
+const VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
+
+function normalizeBaseUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  return url.trim().replace(/\/+$/, '');
+}
+
+function getPublicApiBase(req) {
+  const configured = normalizeBaseUrl(process.env.PUBLIC_API_URL || process.env.SERVER_URL);
+  if (configured) return configured;
+
+  const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = forwardedHost || req.get('host');
+  return `${protocol}://${host}`;
+}
+
+function getClientBaseUrl() {
+  return normalizeBaseUrl(process.env.CLIENT_URL || 'http://localhost:5173');
+}
+
+async function verifyEmailToken(rawToken) {
+  if (!rawToken) {
+    return { ok: false, status: 400, message: 'Verification token is required.' };
+  }
+
+  const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const user = await User.findOne({
+    verificationToken: hashedToken,
+    verificationTokenExpire: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    return { ok: false, status: 400, message: 'Invalid or expired verification link.' };
+  }
+
+  user.isVerified = true;
+  user.verificationToken = undefined;
+  user.verificationTokenExpire = undefined;
+  await user.save();
+
+  return { ok: true, status: 200, message: 'Email verified successfully. You can now sign in.' };
+}
+
+function renderVerificationPage({ ok, message, loginUrl }) {
+  const title = ok ? 'Email Verified' : 'Verification Failed';
+  const tone = ok ? '#D4AF37' : '#f87171';
+  const bodyText = message || (ok ? 'Your email has been verified.' : 'Verification failed.');
+  const escapedLoginUrl = loginUrl.replace(/"/g, '&quot;');
+  const autoRedirect = ok
+    ? `
+      <p style="margin: 14px 0 0; color: #6b7280; font-size: 14px;">Redirecting to login in 2 seconds...</p>
+      <script>
+        setTimeout(function () {
+          window.location.href = "${escapedLoginUrl}";
+        }, 2000);
+      </script>
+    `
+    : '';
+
+  return `
+    <div style="font-family: Georgia, serif; max-width: 640px; margin: 40px auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 45px rgba(0,0,0,0.08);">
+      <div style="background: #0A2342; padding: 24px; text-align: center; border-bottom: 4px solid #D4AF37;">
+        <h1 style="color: #D4AF37; margin: 0; letter-spacing: 3px; font-size: 22px;">AURORA RESORT</h1>
+      </div>
+      <div style="padding: 36px 28px; text-align: center;">
+        <div style="width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 18px; background: ${tone}22; display: inline-flex; align-items: center; justify-content: center;">
+          <span style="color: ${tone}; font-size: 28px; line-height: 1;">${ok ? '✓' : '!'}</span>
+        </div>
+        <h2 style="margin: 0; color: #0A2342; font-size: 30px;">${title}</h2>
+        <p style="margin: 14px 0 0; color: #374151; font-size: 16px; line-height: 1.6;">${bodyText}</p>
+        ${autoRedirect}
+        <a href="${loginUrl}" style="display: inline-block; margin-top: 24px; background: #0A2342; color: #F9F7F2; text-decoration: none; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; padding: 12px 24px; border-radius: 8px; font-size: 12px;">Open Aurora</a>
+      </div>
+    </div>
+  `;
+}
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 10;
@@ -63,7 +142,7 @@ const authLimiter = rateLimit({
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '6h';
 
-// Registration — creates unverified user and sends verification email
+// Registration — creates unverified user (verification email is sent on explicit request)
 router.post('/register', authLimiter, registerValidation, async (req, res) => {
   try {
     const { firstName, lastName, email, password, role } = req.body;
@@ -97,10 +176,6 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       userRole = 'guest';
     }
 
-    // Generate raw token and hashed version to store
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-
     const user = await User.create({
       firstName,
       lastName,
@@ -108,8 +183,8 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       password,
       role: userRole,
       isVerified: false,
-      verificationToken: hashedToken,
-      verificationTokenExpire: Date.now() + 24 * 60 * 60 * 1000,
+      verificationToken: undefined,
+      verificationTokenExpire: undefined,
     });
 
     try {
@@ -127,45 +202,8 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       console.error('[Audit] Failed to record signup:', err.message, err);
     }
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    const verifyUrl = `${clientUrl}/verify-email?token=${rawToken}`;
-
-    const html = `
-      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; background: #f9f7f2;">
-        <div style="background: #0A2342; padding: 30px; text-align: center; border-bottom: 4px solid #D4AF37;">
-          <h1 style="color: #D4AF37; margin: 0; font-size: 24px; letter-spacing: 4px;">AURORA RESORT</h1>
-        </div>
-        <div style="padding: 40px 30px; background-color: #ffffff;">
-          <h2 style="color: #0A2342; margin-top: 0; font-size: 28px;">Verify Your Email</h2>
-          <p style="color: #333; font-size: 16px; line-height: 1.6;">Hello ${user.firstName},</p>
-          <p style="color: #333; font-size: 16px; line-height: 1.6;">
-            Thank you for creating an Aurora account. Click the button below to verify your email and complete registration.
-          </p>
-          <p style="color: #555; font-size: 14px;">
-            This link expires in <strong>24 hours</strong>. If you did not create an account, you can safely ignore this email.
-          </p>
-          <div style="text-align: center; margin: 40px 0;">
-            <a href="${verifyUrl}" style="background-color: #0A2342; color: #F9F7F2; padding: 16px 40px; text-decoration: none; font-weight: bold; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; border-radius: 4px; display: inline-block;">
-              VERIFY MY EMAIL
-            </a>
-          </div>
-          <p style="color: #666; font-size: 13px;">Or copy this link into your browser:</p>
-          <p style="color: #D4AF37; font-size: 13px; word-break: break-all;">${verifyUrl}</p>
-        </div>
-        <div style="background-color: #0A2342; padding: 20px; text-align: center;">
-          <p style="color: #D4AF37; font-size: 12px; margin: 0; letter-spacing: 2px;">© 2024 AURORA RESORT. ALL RIGHTS RESERVED.</p>
-        </div>
-      </div>
-    `;
-
-    try {
-      await sendEmail({ email: user.email, subject: 'Verify your Aurora account', html });
-    } catch (emailErr) {
-      console.error('[Email] Failed to send verification email:', emailErr.message);
-    }
-
     res.status(201).json({
-      message: 'Registration successful. Please check your email to verify your account.',
+      message: 'Registration successful. Click "Send verification email" to receive your verification link.',
       email: user.email,
     });
   } catch (error) {
@@ -177,26 +215,55 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
 // Verify email
 router.get('/verify-email', async (req, res) => {
   const { token } = req.query;
-  if (!token) {
-    return res.status(400).json({ message: 'Verification token is required.' });
-  }
   try {
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-    const user = await User.findOne({
-      verificationToken: hashedToken,
-      verificationTokenExpire: { $gt: Date.now() },
-    });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired verification link.' });
-    }
-    user.isVerified = true;
-    user.verificationToken = undefined;
-    user.verificationTokenExpire = undefined;
-    await user.save();
-    res.status(200).json({ message: 'Email verified successfully. You can now sign in.' });
+    const result = await verifyEmailToken(token);
+    return res.status(result.status).json({ message: result.message });
   } catch (error) {
     console.error('[Verify Email] Error:', error);
-    res.status(500).json({ message: 'Server Error' });
+    return res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Check verification status by email (used for cross-device verification flow).
+router.get('/verification-status', async (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required.' });
+  }
+
+  try {
+    const user = await User.findOne({ email }).select('isVerified');
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with that email.' });
+    }
+    return res.status(200).json({ isVerified: Boolean(user.isVerified) });
+  } catch (error) {
+    console.error('[Verification Status] Error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Backend-hosted verification page for cross-device email verification.
+router.get('/verify-email/confirm', async (req, res) => {
+  const { token } = req.query;
+  const loginUrl = `${getClientBaseUrl()}/login`;
+
+  try {
+    const result = await verifyEmailToken(token);
+    return res
+      .status(result.ok ? 200 : result.status)
+      .type('html')
+      .send(renderVerificationPage({ ok: result.ok, message: result.message, loginUrl }));
+  } catch (error) {
+    console.error('[Verify Email Confirm] Error:', error);
+    return res
+      .status(500)
+      .type('html')
+      .send(renderVerificationPage({
+        ok: false,
+        message: 'Server Error while verifying email.',
+        loginUrl,
+      }));
   }
 });
 
@@ -215,14 +282,27 @@ router.post('/resend-verification', async (req, res) => {
       return res.status(400).json({ message: 'This account is already verified.' });
     }
 
+    const now = Date.now();
+    const expiry = user.verificationTokenExpire ? new Date(user.verificationTokenExpire).getTime() : 0;
+    if (user.verificationToken && expiry > now) {
+      const lastSentAt = expiry - VERIFICATION_TOKEN_TTL_MS;
+      const retryAfterSeconds = Math.ceil((lastSentAt + VERIFICATION_RESEND_COOLDOWN_SECONDS * 1000 - now) / 1000);
+      if (retryAfterSeconds > 0) {
+        return res.status(429).json({
+          message: `Verification email already sent. Please wait ${retryAfterSeconds}s before requesting another one.`,
+          retryAfterSeconds,
+        });
+      }
+    }
+
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
     user.verificationToken = hashedToken;
-    user.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000;
+    user.verificationTokenExpire = Date.now() + VERIFICATION_TOKEN_TTL_MS;
     await user.save();
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    const verifyUrl = `${clientUrl}/verify-email?token=${rawToken}`;
+    const publicApiBase = getPublicApiBase(req);
+    const verifyUrl = `${publicApiBase}/api/users/verify-email/confirm?token=${rawToken}`;
 
     const html = `
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
@@ -233,7 +313,7 @@ router.post('/resend-verification', async (req, res) => {
           <h2 style="color: #0A2342; margin-top: 0;">Verify Your Email</h2>
           <p style="color: #333; font-size: 16px; line-height: 1.6;">Hello ${user.firstName},</p>
           <p style="color: #333; font-size: 16px; line-height: 1.6;">Here is your new verification link.</p>
-          <p style="color: #555; font-size: 14px;">This link expires in <strong>24 hours</strong>.</p>
+          <p style="color: #555; font-size: 14px;">This link expires in <strong>30 minutes</strong>.</p>
           <div style="text-align: center; margin: 40px 0;">
             <a href="${verifyUrl}" style="background-color: #0A2342; color: #F9F7F2; padding: 16px 40px; text-decoration: none; font-weight: bold; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; border-radius: 4px; display: inline-block;">
               VERIFY MY EMAIL

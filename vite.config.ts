@@ -1,6 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+function buildCsp(isDev: boolean): string {
+  const scriptSrc = isDev
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self'";
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob: https: http://localhost:5000",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    scriptSrc,
+    "connect-src 'self' ws: wss: http://localhost:5000"
+  ].join('; ');
+}
+
 const versionedAliases = [
   ["@radix-ui/react-accordion@1.2.3", "@radix-ui/react-accordion"],
   ["@radix-ui/react-alert-dialog@1.1.6", "@radix-ui/react-alert-dialog"],
@@ -42,12 +61,27 @@ const versionedAliases = [
   ["vaul@1.1.2", "vaul"]
 ];
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: versionedAliases.map(([find, replacement]) => ({
-      find,
-      replacement
-    }))
-  }
+export default defineConfig(({ command }) => {
+  const cspDirectives = buildCsp(command === 'serve');
+
+  return {
+    plugins: [react()],
+    server: {
+      headers: {
+        // Keep CSP in dev, but allow Vite's injected/eval scripts so pages can render.
+        "Content-Security-Policy": cspDirectives
+      }
+    },
+    preview: {
+      headers: {
+        "Content-Security-Policy": cspDirectives
+      }
+    },
+    resolve: {
+      alias: versionedAliases.map(([find, replacement]) => ({
+        find,
+        replacement
+      }))
+    }
+  };
 });

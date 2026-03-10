@@ -10,8 +10,10 @@
 | `MONGO_URI` | Yes | MongoDB connection string (e.g. `mongodb://localhost:27017/aurora` or `mongodb+srv://user:pass@cluster.mongodb.net/aurora`). |
 | `JWT_SECRET` | Yes | Long, random secret for signing JWTs (e.g. 32+ chars). Generate with `openssl rand -hex 32`. |
 | `CORS_ORIGIN` | No | Allowed frontend origin (default: `http://localhost:5173`). In production set to your frontend URL (e.g. `https://yourdomain.com`). |
+| `CLIENT_URL` | Yes (recommended) | Frontend URL used for "Open Aurora" / login links in email pages (e.g. `https://yourdomain.com`). |
+| `PUBLIC_API_URL` | Yes (recommended) | Public backend URL used in email verification links (e.g. `https://api.yourdomain.com`). This must be reachable from phones/other devices. |
 | `EMAIL_USER` | For reset | SMTP user for sending password-reset emails. |
-| `EMAIL_PASS` | For reset | SMTP password or app password. |
+| `EMAIL_PASSWORD` | For reset | SMTP password or app password. |
 | `ETH_PROVIDER_URL` | optional | RPC URL for Ethereum (e.g. `http://127.0.0.1:8545` or infura/Alchemy). |
 | `PRIVATE_KEY` | optional | Hex private key used to send bookings transactions. |
 | `BOOKING_CONTRACT_ADDRESS` | optional | Deployed smart contract address used for bookings. |
@@ -42,9 +44,11 @@ For this project, keep the database name you use today (e.g. `aurora`). For each
 
 1. **Secrets:** Set `JWT_SECRET`, `MONGO_URI`, and if used `EMAIL_*` in the host’s environment; do not use defaults from development.
 2. **CORS:** Set `CORS_ORIGIN` to the exact frontend URL (e.g. `https://aurora.example.com`).
-3. **MongoDB:** Prefer MongoDB Atlas (or similar) with TLS. Restrict IP access if possible.
-4. **HTTPS:** Serve frontend and API over HTTPS. Many hosts provide TLS automatically.
-5. **Build:** Run `npm run build` for the frontend and serve the `dist/` folder (or deploy to a static host). Run backend with `npm start` (or your process manager).
+3. **Verification links:** Set `PUBLIC_API_URL` to your deployed API domain so verification emails work from any device.
+4. **Frontend links in emails:** Set `CLIENT_URL` to your deployed frontend domain.
+5. **MongoDB:** Prefer MongoDB Atlas (or similar) with TLS. Restrict IP access if possible.
+6. **HTTPS:** Serve frontend and API over HTTPS. Many hosts provide TLS automatically.
+7. **Build:** Run `npm run build` for the frontend and serve the `dist/` folder (or deploy to a static host). Run backend with `npm start` (or your process manager).
 
 > **Blockchain tip:** you can spin up a local chain quickly using `cd blockchain && npm run start:ganache` (Ganache Desktop defaults to port 7545). Deploy with `npm run deploy:ganache` or set `GANACHE_URL` if you're using a nonstandard port.
 ---
@@ -72,7 +76,7 @@ For this project, keep the database name you use today (e.g. `aurora`). For each
 | **CORS errors in browser** | Backend `CORS_ORIGIN` must match the frontend origin (scheme + host + port). No trailing slash. |
 | **401 on /me or after refresh** | Token expired or invalid. Ensure frontend stores and sends `Authorization: Bearer <token>`. Use refresh endpoint when you get 401. |
 | **MongoDB connection fails** | Verify `MONGO_URI`, network access (Atlas IP allowlist, VPC), and TLS. Check backend logs. |
-| **Password reset email not sent** | Configure `EMAIL_USER` and `EMAIL_PASS`; check SMTP restrictions (e.g. “less secure apps”, app passwords). In dev you can log OTP in server console. |
+| **Password reset email not sent** | Configure `EMAIL_USER` and `EMAIL_PASSWORD`; check SMTP restrictions (e.g. “less secure apps”, app passwords). In dev you can log OTP in server console. |
 | **Rate limit (429)** | Wait for the time window to reset or increase limits in code for development (not recommended in production without a good reason). |
 
 ---

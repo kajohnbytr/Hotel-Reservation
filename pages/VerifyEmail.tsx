@@ -20,6 +20,9 @@ export function VerifyEmail({
   const [resendEmail, setResendEmail] = useState(pendingEmail || '');
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [resendMessage, setResendMessage] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [hasSentVerificationEmail, setHasSentVerificationEmail] = useState(false);
+  const [hasScheduledAutoRedirect, setHasScheduledAutoRedirect] = useState(false);
 
   const token = verifyToken || new URLSearchParams(window.location.search).get('token');
 
@@ -46,8 +49,59 @@ export function VerifyEmail({
     })();
   }, [token]);
 
+  useEffect(() => {
+    if (token || !pendingEmail) return;
+
+    let cancelled = false;
+    const normalizedEmail = pendingEmail.trim().toLowerCase();
+
+    const checkVerificationStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/users/verification-status?email=${encodeURIComponent(normalizedEmail)}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+
+        if (data.isVerified) {
+          setStatus('success');
+          setMessage('Email verified successfully. Redirecting to sign in...');
+        }
+      } catch {
+        // Ignore transient errors while polling.
+      }
+    };
+
+    const id = window.setInterval(checkVerificationStatus, 3000);
+    checkVerificationStatus();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [token, pendingEmail]);
+
+  useEffect(() => {
+    if (status !== 'success' || hasScheduledAutoRedirect) return;
+    setHasScheduledAutoRedirect(true);
+    const id = window.setTimeout(() => onNavigateToLogin(), 1200);
+    return () => window.clearTimeout(id);
+  }, [status, hasScheduledAutoRedirect, onNavigateToLogin]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [resendCooldown]);
+
+  useEffect(() => {
+    if (resendCooldown === 0 && resendStatus === 'sent') {
+      setResendStatus('idle');
+    }
+  }, [resendCooldown, resendStatus]);
+
   const handleResend = async () => {
-    if (!resendEmail) return;
+    if (!resendEmail || resendCooldown > 0) return;
     setResendStatus('sending');
     setResendMessage('');
     try {
@@ -59,9 +113,14 @@ export function VerifyEmail({
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setResendStatus('sent');
+        setResendCooldown(60);
+        setHasSentVerificationEmail(true);
         setResendMessage('A new verification email has been sent. Check your inbox.');
       } else {
         setResendStatus('error');
+        if (typeof data.retryAfterSeconds === 'number') {
+          setResendCooldown(Math.max(0, data.retryAfterSeconds));
+        }
         setResendMessage(data.message || 'Failed to resend. Please try again.');
       }
     } catch {
@@ -125,7 +184,13 @@ export function VerifyEmail({
                 placeholder="you@gmail.com"
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
-              <ResendButton status={resendStatus} onClick={handleResend} disabled={!resendEmail} />
+              <ResendButton
+                status={resendStatus}
+                onClick={handleResend}
+                disabled={!resendEmail || resendCooldown > 0}
+                cooldown={resendCooldown}
+                hasSentBefore={hasSentVerificationEmail}
+              />
               {resendMessage && <ResendMessage status={resendStatus} message={resendMessage} />}
             </div>
             <button onClick={onNavigateToLogin} className="mt-5 text-sm text-[#D4AF37] font-bold hover:underline">Back to Sign In</button>
@@ -149,7 +214,10 @@ export function VerifyEmail({
               Click the link in that email to activate your account.
             </p>
             <p className="mt-2 text-xs text-[#0A2342]/45 dark:text-[#F9F7F2]/45">
-              The link expires in 24 hours. Check your spam folder if you don't see it.
+              The link expires in 30 minutes. Check your spam folder if you don't see it.
+            </p>
+            <p className="mt-2 text-xs text-[#0A2342]/55 dark:text-[#F9F7F2]/55">
+              Click the button below to send your first verification email.
             </p>
             <div className="mt-8 border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 pt-6 space-y-3 text-left">
               <p className="text-xs uppercase tracking-widest font-bold text-[#0A2342]/50 dark:text-[#F9F7F2]/50 text-center">Didn't receive it?</p>
@@ -162,7 +230,13 @@ export function VerifyEmail({
                   className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
                 />
               )}
-              <ResendButton status={resendStatus} onClick={handleResend} disabled={!resendEmail} />
+              <ResendButton
+                status={resendStatus}
+                onClick={handleResend}
+                disabled={!resendEmail || resendCooldown > 0}
+                cooldown={resendCooldown}
+                hasSentBefore={hasSentVerificationEmail}
+              />
               {resendMessage && <ResendMessage status={resendStatus} message={resendMessage} />}
             </div>
             <button onClick={onNavigateToLogin} className="mt-5 text-sm text-[#D4AF37] font-bold hover:underline">Back to Sign In</button>
@@ -194,14 +268,28 @@ function Spinner() {
   );
 }
 
-function ResendButton({ status, onClick, disabled }: { status: string; onClick: () => void; disabled: boolean }) {
+function ResendButton({
+  status,
+  onClick,
+  disabled,
+  cooldown,
+  hasSentBefore,
+}: {
+  status: string;
+  onClick: () => void;
+  disabled: boolean;
+  cooldown?: number;
+  hasSentBefore?: boolean;
+}) {
+  const hasCooldown = typeof cooldown === 'number' && cooldown > 0;
+  const baseLabel = hasSentBefore ? 'Resend Verification Email' : 'Send Verification Email';
   return (
     <button
       onClick={onClick}
-      disabled={status === 'sending' || status === 'sent' || disabled}
+      disabled={status === 'sending' || disabled}
       className="w-full bg-[#0A2342] hover:bg-[#153a66] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] text-[#F9F7F2] font-bold py-4 transition-colors disabled:opacity-60 uppercase tracking-widest text-xs rounded-lg"
     >
-      {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Email Sent ✓' : 'Resend Verification Email'}
+      {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Email Sent ✓' : hasCooldown ? `Resend in ${cooldown}s` : baseLabel}
     </button>
   );
 }

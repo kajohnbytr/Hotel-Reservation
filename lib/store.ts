@@ -117,7 +117,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role?: 'guest' | 'staff';
+  role?: 'guest' | 'staff' | 'admin';
 }
 
 // In-memory simulated storage

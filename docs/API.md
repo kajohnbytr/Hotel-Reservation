@@ -60,6 +60,32 @@ Log in with email and password.
 
 ---
 
+### GET `/api/users/verify-email?token=<token>`
+
+Verify a signup email token (JSON response).
+
+**Success (200):**
+
+```json
+{
+  "message": "Email verified successfully. You can now sign in."
+}
+```
+
+**Errors:** 400 (missing/invalid/expired token), 500.
+
+---
+
+### GET `/api/users/verify-email/confirm?token=<token>`
+
+Backend-hosted verification page intended for email links. This endpoint verifies the token and renders an HTML success/failure page, so verification works across devices even if the frontend app route is not directly used.
+
+**Success:** 200 with HTML page.
+
+**Errors:** 400 (invalid/expired token page), 500 (server error page).
+
+---
+
 ### POST `/api/users/refresh`
 
 Issue a new access token using a valid refresh token. Use when the access token expires (e.g. after 1 hour).

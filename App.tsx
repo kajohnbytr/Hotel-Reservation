@@ -15,7 +15,7 @@ import { BookingPage } from './pages/Booking';
 import { ConfirmationPage } from './pages/Confirmation';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
-import { ROOMS, getUser, logoutUser, User, Booking, mapApiRoomToRoom, Room, isSessionExpired } from './lib/store';
+import { ROOMS, getUser, logoutUser, User, Booking, mapApiRoomToRoom, Room, ApiRoom, isSessionExpired } from './lib/store';
 import { ThemeProvider } from './lib/theme';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
@@ -83,8 +83,8 @@ function AppContent() {
     try {
       const res = await fetch(`${API_BASE}/api/rooms`);
       if (res.ok) {
-        const data = await res.json();
-        const mapped = (data || []).map(mapApiRoomToRoom);
+        const data: ApiRoom[] = await res.json();
+        const mapped = (Array.isArray(data) ? data : []).map(mapApiRoomToRoom);
         const staticIds = new Set(ROOMS.map((r) => r.id));
         const fromApi = mapped.filter((r) => !staticIds.has(r.id));
         setRooms([...ROOMS, ...fromApi]);

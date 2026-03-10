@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Room } from '../lib/store';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -556,7 +557,7 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
             className={`rounded-xl p-5 flex items-center justify-between border shadow-md transition-all duration-300 ease-in-out hover:-translate-y-1 hover:border-[#D4AF37]`}
           >
             <div className="flex items-center gap-4 flex-1 min-w-0">
-              <img
+              <ImageWithFallback
                 src={room.image}
                 alt={room.name}
                 className="w-32 h-20 rounded-xl object-cover shrink-0 border border-gray-200/30 dark:border-white/10"
