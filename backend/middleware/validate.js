@@ -24,8 +24,11 @@ export const registerValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('password')
+    .notEmpty().withMessage('Password is required')
+    .matches(/^\S+$/).withMessage('Password cannot contain spaces'),
   handleValidation,
   (req, res, next) => {
     const email = req.body.email;
@@ -50,8 +53,11 @@ export const loginValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('password')
+    .notEmpty().withMessage('Password is required')
+    .matches(/^\S+$/).withMessage('Password cannot contain spaces'),
   handleValidation,
 ];
 
@@ -60,6 +66,7 @@ export const forgotPasswordValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   handleValidation,
 ];
@@ -69,9 +76,12 @@ export const resetPasswordValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   body('otp').trim().notEmpty().withMessage('OTP is required'),
-  body('newPassword').notEmpty().withMessage('New password is required'),
+  body('newPassword')
+    .notEmpty().withMessage('New password is required')
+    .matches(/^\S+$/).withMessage('Password cannot contain spaces'),
   handleValidation,
   (req, res, next) => {
     const result = validatePassword(req.body.newPassword);

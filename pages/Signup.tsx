@@ -166,7 +166,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               type="email"
               required
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); }}
+              onChange={(e) => { setEmail(e.target.value.replace(/\s/g, '')); setError(''); }}
               placeholder="you@gmail.com"
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
             />
@@ -180,7 +180,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value.replace(/\s/g, ''))}
                 placeholder="Create a password"
                 minLength={8}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
@@ -211,7 +211,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
                 type={showConfirmPassword ? "text" : "password"}
                 required
                 value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+                onChange={(e) => { setConfirmPassword(e.target.value.replace(/\s/g, '')); setError(''); }}
                 placeholder="Re-enter your password"
                 minLength={8}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none transition-colors rounded-lg"

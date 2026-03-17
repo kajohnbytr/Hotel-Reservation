@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Room } from '../lib/store';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
@@ -85,6 +85,9 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [guestSearch, setGuestSearch] = useState('');
+  const [guestRoleFilter, setGuestRoleFilter] = useState<'all' | 'guest' | 'staff' | 'admin'>('all');
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ userId: string; userName: string; userRole: string } | null>(null);
   const [auditLogs, setAuditLogs] = useState<{ _id: string; userEmail: string; userName: string; role?: string; action: string; details: string; createdAt: string }[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditRoleFilter, setAuditRoleFilter] = useState<string>('');
@@ -263,11 +266,14 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
 
   const filteredGuests = guests.filter((g) => {
     const q = guestSearch.toLowerCase();
-    return (
+    const matchesSearch =
       g.name.toLowerCase().includes(q) ||
       g.email.toLowerCase().includes(q) ||
-      g.id.toLowerCase().includes(q)
-    );
+      g.id.toLowerCase().includes(q);
+    
+    const matchesRole = guestRoleFilter === 'all' || g.role.toLowerCase() === guestRoleFilter.toLowerCase();
+    
+    return matchesSearch && matchesRole;
   });
 
   const handleAddAmenity = () => {
@@ -370,6 +376,40 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
       toast.error('Could not create staff account. Please try again.');
     } finally {
       setCreatingStaff(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!token) return;
+
+    setDeletingUserId(userId);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not delete user.');
+        setDeletingUserId(null);
+        setDeleteConfirmModal(null);
+        return;
+      }
+
+      toast.success('User deleted successfully.');
+      setDeleteConfirmModal(null);
+      if (token && activeTab === 'guests') {
+        fetchGuestsWithOnlineStatus(token);
+      }
+    } catch {
+      toast.error('Could not delete user. Please try again.');
+      setDeleteConfirmModal(null);
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -611,7 +651,25 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
         + Add Staff
       </button>
 
-      <div className="flex justify-end">
+      <div className="flex items-center gap-2">
+        {/* Role filter buttons */}
+        <div className="flex gap-2 mr-4">
+          {(['all', 'guest', 'staff', 'admin'] as const).map((role) => (
+            <button
+              key={role}
+              type="button"
+              onClick={() => setGuestRoleFilter(role)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors ${
+                guestRoleFilter === role
+                  ? 'bg-[#0A2342] dark:bg-[#D4AF37] text-[#F9F7F2] dark:text-[#0A2342]'
+                  : 'bg-[#F1F5F9] dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2] hover:bg-[#E2E8F0] dark:hover:bg-[#1f3a52]'
+              }`}
+            >
+              {role === 'all' ? 'All' : role.charAt(0).toUpperCase() + role.slice(1)}
+            </button>
+          ))}
+        </div>
+
         <div className="relative w-56">
           <input
             type="text"
@@ -634,6 +692,7 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Email</th>
             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Role</th>
             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Last Activity</th>
+            <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-widest">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -683,6 +742,20 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                       return rel || formatAuditDate(g.lastActivity);
                     })()
                   : '—'}
+              </td>
+              <td className="px-6 py-3 text-sm">
+                {g.role.toUpperCase() !== 'ADMIN' && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmModal({ userId: g.id, userName: g.name, userRole: g.role })}
+                    disabled={deletingUserId === g.id}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Delete user"
+                  >
+                    <Trash2 size={16} />
+                    <span className="text-xs font-semibold">Delete</span>
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -747,6 +820,58 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )}
+
+  {/* Delete confirmation modal */}
+  {deleteConfirmModal && (
+    <div
+      className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={() => setDeleteConfirmModal(null)}
+    >
+      <div
+        className="w-full max-w-md bg-white dark:bg-[#0A2342] border border-red-300 dark:border-red-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal content */}
+        <div className="p-6 overflow-y-auto flex-1">
+          <h3 className="text-xl font-serif text-[#0A2342] dark:text-[#F9F7F2] mb-4">Delete User</h3>
+          <p className="text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/70 mb-2">
+            Are you sure you want to delete this user account?
+          </p>
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-6 space-y-1">
+            <p className="text-sm font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+              {deleteConfirmModal.userName}
+            </p>
+            <p className="text-sm text-[#0A2342]/70 dark:text-[#F9F7F2]/70">
+              {deleteConfirmModal.userRole} • {deleteConfirmModal.userId}
+            </p>
+          </div>
+          <p className="text-xs text-red-600 dark:text-red-400">
+            This action cannot be undone. All associated data may be lost.
+          </p>
+        </div>
+
+        {/* Modal footer */}
+        <div className="px-6 py-4 bg-[#F9F7F2] dark:bg-[#05152a] border-t border-red-200 dark:border-red-900 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDeleteConfirmModal(null)}
+            disabled={deletingUserId !== null}
+            className="h-10 px-4 rounded-lg border border-[#0A2342]/25 dark:border-[#F9F7F2]/25 text-[#0A2342] dark:text-[#F9F7F2] text-xs font-bold uppercase tracking-widest hover:bg-[#0A2342]/5 dark:hover:bg-[#F9F7F2]/10 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteUser(deleteConfirmModal.userId)}
+            disabled={deletingUserId !== null}
+            className="h-10 px-4 rounded-lg bg-red-600 dark:bg-red-700 border-2 border-red-700 dark:border-red-900 text-black dark:text-black text-xs font-bold uppercase tracking-widest hover:bg-red-700 dark:hover:bg-red-600 transition-colors disabled:opacity-70"
+          >
+            {deletingUserId === deleteConfirmModal.userId ? 'Deleting...' : 'Delete User'}
+          </button>
+        </div>
       </div>
     </div>
   )}

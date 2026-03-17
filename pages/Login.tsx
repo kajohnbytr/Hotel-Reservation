@@ -200,9 +200,11 @@ export function Login({
           if (data.lockedUntil && data.retryAfterSeconds) {
             setLockoutSecondsLeft(data.retryAfterSeconds);
             setError(data.message || 'Account temporarily locked. Try again later.');
+            setPassword('');
           } else {
             setHasCredentialError(true);
             setError('Incorrect Email or Password');
+            setPassword('');
           }
         }
         setIsLoading(false);
@@ -253,7 +255,7 @@ export function Login({
               type="email"
               required
               value={email}
-              onChange={(e) => { setEmail(e.target.value); clearErrors(); }}
+              onChange={(e) => { setEmail(e.target.value.replace(/\s/g, '')); clearErrors(); }}
               placeholder="you@gmail.com"
               style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
@@ -266,7 +268,7 @@ export function Login({
                 type={showPassword ? "text" : "password"}
                 required
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); clearErrors(); }}
+                onChange={(e) => { setPassword(e.target.value.replace(/\s/g, '')); clearErrors(); }}
                 placeholder="••••••••"
                 style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
@@ -285,8 +287,9 @@ export function Login({
             <div className="flex justify-end mt-2">
               <button
                 type="button"
+                disabled={lockoutSecondsLeft != null && lockoutSecondsLeft > 0}
                 onClick={() => { setShowForgotModal(true); setForgotStep(1); setForgotEmail(email); setForgotError(''); setForgotSuccess(''); }}
-                className="text-xs text-[#D4AF37] hover:underline font-medium"
+                className="text-xs text-[#D4AF37] hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Forgot password?
               </button>
