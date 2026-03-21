@@ -40,6 +40,7 @@ export function Navbar({ user, onNavigate, currentPage, onLogout }: NavbarProps)
           <div className="hidden md:flex items-center space-x-10">
             <NavLink page="home" label="Home" />
             <NavLink page="rooms" label="Rooms" />
+            {user?.role === 'staff' && <NavLink page="reception" label="Reception Desk" />}
             {user?.role === 'guest' && <NavLink page="dashboard" label="Dashboard" />}
             {user?.role === 'admin' && <NavLink page="admin-dashboard" label="Admin" />}
             
@@ -96,6 +97,7 @@ export function Navbar({ user, onNavigate, currentPage, onLogout }: NavbarProps)
             <div className="px-6 py-8 flex flex-col space-y-6 items-center">
               <NavLink page="home" label="Home" />
               <NavLink page="rooms" label="Rooms" />
+              {user?.role === 'staff' && <NavLink page="reception" label="Reception Desk" />}
               {user?.role === 'guest' && <NavLink page="dashboard" label="Dashboard" />}
               {user?.role === 'admin' && <NavLink page="admin-dashboard" label="Admin" />}
             <div className="pt-6 border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10 w-full flex flex-col items-center gap-4">

@@ -17,6 +17,7 @@
 | `ETH_PROVIDER_URL` | optional | RPC URL for Ethereum (e.g. `http://127.0.0.1:8545` or infura/Alchemy). |
 | `PRIVATE_KEY` | optional | Hex private key used to send bookings transactions. |
 | `BOOKING_CONTRACT_ADDRESS` | optional | Deployed smart contract address used for bookings. |
+| `BOOKING_RECORDER` | optional | Wallet address to authorize as on-chain booking recorder during deploy (if different from deployer). |
 
 Never commit `.env` or put secrets in the repo. Use your platform’s secret/config (e.g. Vercel, Railway, Render env vars).
 

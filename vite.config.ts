@@ -12,11 +12,11 @@ function buildCsp(isDev: boolean): string {
     "form-action 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
-    "img-src 'self' data: blob: https: http://localhost:5000",
+    "img-src 'self' data: blob: http: https:",
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
     scriptSrc,
-    "connect-src 'self' ws: wss: http://localhost:5000"
+    "connect-src 'self' ws: wss: http: https:"
   ].join('; ');
 }
 

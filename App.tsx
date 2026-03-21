@@ -16,11 +16,13 @@ import { ConfirmationPage } from './pages/Confirmation';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { ROOMS, getUser, logoutUser, User, Booking, mapApiRoomToRoom, Room, ApiRoom, isSessionExpired } from './lib/store';
+import { getApiBaseUrl } from './lib/api';
+import { getAuthItem, setAuthItem } from './lib/authSession';
 import { ThemeProvider } from './lib/theme';
 import { Toaster, toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 // import StaffDashboard from "./pages/StaffDashboard"; // This line is being removed
 
@@ -85,9 +87,12 @@ function AppContent() {
       if (res.ok) {
         const data: ApiRoom[] = await res.json();
         const mapped = (Array.isArray(data) ? data : []).map(mapApiRoomToRoom);
-        const staticIds = new Set(ROOMS.map((r) => r.id));
-        const fromApi = mapped.filter((r) => !staticIds.has(r.id));
-        setRooms([...ROOMS, ...fromApi]);
+        // Use DB rooms whenever available so room IDs match backend expectations.
+        if (mapped.length > 0) {
+          setRooms(mapped);
+        } else {
+          setRooms(ROOMS);
+        }
       }
     } catch {
       // keep current rooms (ROOMS or previously fetched)
@@ -101,7 +106,7 @@ function AppContent() {
   // If user is staff/admin, validate session with API; on 401 clear session so they must re-login
   useEffect(() => {
     if (!user || (user.role !== 'staff' && user.role !== 'admin')) return;
-    const token = localStorage.getItem('aurora_token');
+    const token = getAuthItem('aurora_token');
     if (!token) return;
     const controller = new AbortController();
     fetch(`${API_BASE}/api/bookings`, {
@@ -126,10 +131,12 @@ function AppContent() {
       } else if (path === '/login/staff') {
         setCurrentPage('staff-login');
       } else if (path === '/verify-email') {
-  const urlToken = new URLSearchParams(window.location.search).get('token');
-  if (urlToken) setPendingVerifyToken(urlToken);
-  setCurrentPage('verify-email');
-}
+        const urlToken = new URLSearchParams(window.location.search).get('token');
+        setPendingVerifyToken(urlToken || '');
+        setCurrentPage('verify-email');
+      } else {
+        setPendingVerifyToken('');
+      }
     }
 
     const storedUser = getUser();
@@ -160,7 +167,7 @@ function AppContent() {
         if (cancelled) return;
         setAdminSetupRequired(!adminExists);
         if (!adminExists) {
-          const hasSession = !!localStorage.getItem('aurora_user') || !!localStorage.getItem('aurora_token');
+          const hasSession = !!getAuthItem('aurora_user') || !!getAuthItem('aurora_token');
           if (hasSession) {
             await logoutUser();
             if (cancelled) return;
@@ -211,6 +218,7 @@ function AppContent() {
 
   const handleSignup = (email: string) => {
     setPendingVerifyEmail(email);
+    setPendingVerifyToken('');
     setCurrentPage('verify-email');
   };
 
@@ -236,9 +244,49 @@ function AppContent() {
       setCurrentPage('login');
       return;
     }
+
+    if (user.role === 'staff' || user.role === 'admin') {
+      toast.error('Only guest accounts can create reservations.');
+      setCurrentPage(user.role === 'staff' ? 'reception' : 'admin-dashboard');
+      return;
+    }
+
+    const room = rooms.find((r) => r.id === roomId);
+    const isMongoId = /^[a-fA-F0-9]{24}$/.test(roomId);
+    if (!room || !isMongoId) {
+      toast.error('Selected room is not available for booking yet. Please refresh and choose an available room.');
+      fetchRooms();
+      setCurrentPage('rooms');
+      return;
+    }
+
     setSelectedRoomId(roomId);
     setCurrentPage('booking');
   };
+
+  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
+    const refreshToken = getAuthItem('aurora_refresh_token');
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/users/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => ({}));
+      const newToken = typeof data.token === 'string' ? data.token : null;
+      if (newToken) {
+        setAuthItem('aurora_token', newToken);
+        return newToken;
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }, []);
 
   const handleBookingConfirm = async (
     _hash: string,
@@ -250,32 +298,53 @@ function AppContent() {
   ) => {
     if (!user || !selectedRoomId) return false;
 
-    const token = localStorage.getItem('aurora_token');
-    const room = ROOMS.find((r) => r.id === selectedRoomId);
+    let token = getAuthItem('aurora_token');
+    const room = rooms.find((r) => r.id === selectedRoomId);
 
-    if (!token || !room) {
-      toast.error('You are not logged in. Please sign in again.');
+    if (!token) {
+      token = await refreshAccessToken();
+      if (!token) {
+        toast.error('You are not logged in. Please sign in again.');
+        return false;
+      }
+    }
+
+    if (!room) {
+      toast.error('Selected room was not found. Please choose a room again.');
+      setCurrentPage('rooms');
       return false;
     }
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/bookings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          guestName: user.name,
-          roomId: selectedRoomId,
-          roomName: room.name,
-          checkIn,
-          checkOut,
-          nights,
-          guests: guests || 1,
-          total,
-        }),
-      });
+      const submitBooking = async (accessToken: string) =>
+        fetch(`${API_BASE}/api/bookings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            guestName: user.name,
+            roomId: selectedRoomId,
+            roomName: room.name,
+            checkIn,
+            checkOut,
+            nights,
+            guests: guests || 1,
+            total,
+          }),
+        });
+
+      let res = await submitBooking(token);
+
+      // Access token expired during booking flow; refresh and retry once.
+      if (res.status === 401) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          token = refreshed;
+          res = await submitBooking(token);
+        }
+      }
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -290,14 +359,14 @@ function AppContent() {
         date: data.checkIn,
         nights: data.nights,
         totalPrice: data.total,
-        status: 'confirmed',
+        status: data.status === 'confirmed' ? 'confirmed' : 'pending',
         txHash: data.txHash || '',
         timestamp: new Date().toISOString(),
       };
 
       setCurrentBooking(newBooking);
       setCurrentPage('confirmation');
-      toast.success('Reservation Confirmed');
+      toast.success(newBooking.status === 'pending' ? 'Reservation submitted for staff approval' : 'Reservation confirmed');
       return true;
     } catch {
       toast.error('Could not save reservation to server.');
@@ -326,6 +395,7 @@ function AppContent() {
             rooms={rooms} 
             onBook={handleBook} 
             onViewAllRooms={() => setCurrentPage('rooms')}
+            viewerRole={user?.role}
             onNavigateToStaffLogin={() => setCurrentPage('staff-login')}
             onNavigateToReception={() => setCurrentPage('reception')}
           />
@@ -351,7 +421,7 @@ function AppContent() {
                   <RoomCard
                     room={room}
                     onBook={handleBook}
-                    adminMode={user?.role === 'admin'}
+                    adminMode={user?.role === 'admin' || user?.role === 'staff'}
                     onRoomUpdated={handleRoomUpdated}
                   />
                 </div>
@@ -366,6 +436,7 @@ function AppContent() {
             onNavigateToSignup={() => setCurrentPage('signup')}
             onNavigateToVerify={(email) => {
               setPendingVerifyEmail(email);
+              setPendingVerifyToken('');
               setCurrentPage('verify-email');
             }}
           />
@@ -377,9 +448,12 @@ function AppContent() {
           <VerifyEmail
             pendingEmail={pendingVerifyEmail}
             verifyToken={pendingVerifyToken}
-             onNavigateToLogin={() => setCurrentPage('login')}
-           />
-       );
+            onNavigateToLogin={() => {
+              setPendingVerifyToken('');
+              setCurrentPage('login');
+            }}
+          />
+        );
       case 'staff-login':
         return (
           <StaffLogin

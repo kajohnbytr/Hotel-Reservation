@@ -12,6 +12,8 @@ import roomRoutes from './routes/rooms.js';
 import adminRoutes from './routes/admin.js';
 import { connectDB } from './config/db.js';
 import { sanitizeNoSql } from './middleware/sanitizeNoSql.js';
+import { seedDefaultRooms } from './utils/seedDefaultRooms.js';
+import mongoose from 'mongoose';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,14 +24,66 @@ const PORT = process.env.PORT || 5000;
 
 const app = express();
 
+function parseOrigin(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedOriginHosts() {
+  const hosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  const configuredOrigins = [
+    process.env.CORS_ORIGIN,
+    process.env.CLIENT_URL,
+    process.env.PUBLIC_API_URL,
+  ];
+
+  for (const value of configuredOrigins) {
+    for (const entry of String(value || '').split(',').map((item) => item.trim()).filter(Boolean)) {
+      const parsed = parseOrigin(entry);
+      if (parsed?.hostname) hosts.add(parsed.hostname);
+    }
+  }
+
+  return hosts;
+}
+
+const allowedOriginHosts = getAllowedOriginHosts();
+
 // Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'http:', 'https:'],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
 }));
 
 // CORS before other middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const parsed = parseOrigin(origin);
+    if (parsed && ['http:', 'https:'].includes(parsed.protocol) && allowedOriginHosts.has(parsed.hostname)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
 
@@ -54,6 +108,16 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/admin', adminRoutes);
 
 connectDB();
+
+mongoose.connection.once('open', () => {
+  seedDefaultRooms()
+    .then((count) => {
+      console.log(`[Rooms] Default catalog synced (${count} entries).`);
+    })
+    .catch((error) => {
+      console.error('[Rooms] Failed to seed default catalog:', error?.message || error);
+    });
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -12,6 +12,7 @@ interface ConfirmationPageProps {
 
 export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPageProps) {
   const room = rooms.find(r => r.id === booking.roomId);
+  const isPending = booking.status === 'pending';
 
   return (
     <div className="max-w-2xl mx-auto py-16 px-6">
@@ -26,8 +27,10 @@ export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPa
           <div className="w-16 h-16 bg-[#D4AF37] text-[#0A2342] rounded-full flex items-center justify-center mx-auto mb-6">
             <Check className="w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-serif text-[#F9F7F2] mb-2">Confirmed</h1>
-          <p className="text-[#D4AF37] uppercase tracking-widest text-xs">Your sanctuary awaits</p>
+          <h1 className="text-3xl font-serif text-[#F9F7F2] mb-2">{isPending ? 'Pending Approval' : 'Confirmed'}</h1>
+          <p className="text-[#D4AF37] uppercase tracking-widest text-xs">
+            {isPending ? 'Awaiting staff confirmation' : 'Your sanctuary awaits'}
+          </p>
         </div>
 
         <div className="border border-[#F9F7F2]/10 p-8 mb-10 rounded-xl">
@@ -43,6 +46,9 @@ export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPa
             
             <div className="text-[#F9F7F2]/60">Total</div>
             <div className="text-right text-[#D4AF37] text-lg font-serif">₱{booking.totalPrice}</div>
+
+            <div className="text-[#F9F7F2]/60">Status</div>
+            <div className="text-right">{isPending ? 'Pending staff approval' : 'Confirmed'}</div>
           </div>
         </div>
 
@@ -78,7 +84,9 @@ export function ConfirmationPage({ booking, rooms, onDashboard }: ConfirmationPa
               </>
             ) : (
               <p className="text-[11px] text-[#F9F7F2]/60 text-center">
-                This reservation is confirmed in the hotel system. Blockchain verification ID is not available for this booking.
+                {isPending
+                  ? 'This reservation is awaiting staff confirmation. A blockchain verification ID will appear after approval.'
+                  : 'This reservation is confirmed in the hotel system. Blockchain verification ID is not available for this booking.'}
               </p>
             )}
           </div>

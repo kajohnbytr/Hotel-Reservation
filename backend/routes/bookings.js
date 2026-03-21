@@ -1,8 +1,10 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Booking from '../models/booking.js';
+import Room from '../models/room.js';
 import AuditLog from '../models/auditLog.js';
 import { protect } from '../middleware/auth.js';
-import { recordBookingOnChain } from '../blockchain.js';
+import { recordBookingOnChain, computeBookingFingerprint, verifyBookingFingerprintWithTx } from '../blockchain.js';
 
 const router = express.Router();
 
@@ -64,7 +66,7 @@ router.get('/my', protect, async (req, res) => {
   try {
     const bookings = await Booking.find({
       userId: req.user._id,
-      status: { $in: ['confirmed', 'pending_cancel'] },
+      status: { $in: ['pending', 'confirmed', 'pending_cancel'] },
     })
       .sort({ checkIn: -1 })
       .lean();
@@ -94,15 +96,52 @@ router.get('/my', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   console.log('POST /api/bookings body', req.body, 'user', req.user && req.user._id);
   try {
-    const { guestName, roomId, roomName, checkIn, checkOut, nights, guests, total, txHash: clientTxHash } = req.body;
-    if (!guestName || !roomId || !roomName || !checkIn || !checkOut || nights == null || total == null) {
+    const { roomId, checkIn, checkOut, guests } = req.body;
+    if (!roomId || !checkIn || !checkOut) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
+
     const checkInDate = new Date(checkIn);
     const checkOutDate = new Date(checkOut);
+    if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid check-in or check-out date' });
+    }
+    if (checkOutDate <= checkInDate) {
+      return res.status(400).json({ message: 'checkOut must be after checkIn' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(404).json({ message: 'Selected room was not found. Please choose an available room and try again.' });
+    }
+
+    const room = await Room.findById(roomId).lean();
+    if (!room) {
+      return res.status(404).json({ message: 'Selected room was not found' });
+    }
+
+    const requestedGuests = Number(guests) || 1;
+    if (!Number.isInteger(requestedGuests) || requestedGuests < 1) {
+      return res.status(400).json({ message: 'Guests must be a positive whole number' });
+    }
+    if (requestedGuests > room.maxGuests) {
+      return res.status(400).json({ message: `This room only allows up to ${room.maxGuests} guest(s)` });
+    }
+
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const derivedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / MS_PER_DAY);
+    if (!Number.isInteger(derivedNights) || derivedNights < 1) {
+      return res.status(400).json({ message: 'Booking must be at least 1 night' });
+    }
+
+    const nightlyRate = Number(room.pricePerNight);
+    if (!Number.isFinite(nightlyRate) || nightlyRate <= 0) {
+      return res.status(500).json({ message: 'Room pricing is invalid. Please contact support.' });
+    }
+    const computedTotal = Number((nightlyRate * derivedNights).toFixed(2));
+
     const overlapping = await Booking.findOne({
       roomId,
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       checkIn: { $lt: checkOutDate },
       checkOut: { $gt: checkInDate },
     });
@@ -113,7 +152,7 @@ router.post('/', protect, async (req, res) => {
     // Check concurrent bookings limit
     const concurrentBookings = await Booking.countDocuments({
       userId: req.user._id,
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       checkIn: { $lt: checkOutDate },
       checkOut: { $gt: checkInDate },
     });
@@ -129,7 +168,7 @@ router.post('/', protect, async (req, res) => {
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const dailyBookings = await Booking.countDocuments({
       userId: req.user._id,
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       createdAt: { $gte: startOfDay, $lte: endOfDay },
     });
     if (dailyBookings >= MAX_BOOKINGS_PER_DAY) {
@@ -139,19 +178,18 @@ router.post('/', protect, async (req, res) => {
     }
 
     const bookingData = {
-      guestName,
+      guestName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email || 'Guest',
       roomId,
-      roomName,
+      roomName: room.name,
       checkIn: checkInDate,
       checkOut: checkOutDate,
-      nights: Number(nights),
-      guests: Number(guests) || 1,
-      total: Number(total),
+      nights: derivedNights,
+      guests: requestedGuests,
+      total: computedTotal,
       userId: req.user._id,
+      status: 'pending',
     };
-    if (clientTxHash && typeof clientTxHash === 'string' && clientTxHash.trim()) {
-      bookingData.txHash = clientTxHash.trim();
-    }
+
     const booking = await Booking.create(bookingData);
 
     try {
@@ -166,30 +204,10 @@ router.post('/', protect, async (req, res) => {
         userName: guestName,
         role: creatorRole,
         action: 'guest_booking',
-        details: `Reservation: ${roomName}, ${checkInStr} to ${checkOutStr} (${nights} night(s))`,
+        details: `Reservation: ${room.name}, ${checkInStr} to ${checkOutStr} (${derivedNights} night(s))`,
       });
     } catch (err) {
       console.error('[Audit] guest_booking:', err.message, err);
-    }
-
-    // Record on-chain if the client did not already send a txHash; wait so response includes real txHash
-    if (!bookingData.txHash) {
-      try {
-        const txHash = await recordBookingOnChain({
-          guestName: booking.guestName,
-          roomName: booking.roomName,
-          checkIn: booking.checkIn,
-          checkOut: booking.checkOut,
-          total: booking.total,
-        });
-        if (txHash) {
-          console.log('Booking recorded on chain, tx=', txHash);
-          booking.txHash = txHash;
-          await booking.save();
-        }
-      } catch (err) {
-        console.error('Failed to record booking on chain', err);
-      }
     }
 
     res.status(201).json({
@@ -202,7 +220,7 @@ router.post('/', protect, async (req, res) => {
       nights: booking.nights,
       guests: booking.guests,
       total: booking.total,
-      status: booking.status || 'confirmed',
+      status: booking.status || 'pending',
       txHash: booking.txHash || '',
     });
   } catch (error) {
@@ -218,6 +236,7 @@ router.get('/room/:roomId/occupied-ranges', async (req, res) => {
     const from = req.query.from; // optional YYYY-MM-DD
     const to = req.query.to;   // optional YYYY-MM-DD
     const query = { roomId, status: 'confirmed' };
+    query.status = { $in: ['confirmed', 'pending', 'pending_cancel'] };
     if (from && to) {
       query.checkIn = { $lt: new Date(to) };
       query.checkOut = { $gt: new Date(from) };
@@ -246,7 +265,7 @@ router.get('/availability', protect, async (req, res) => {
     const nextDay = new Date(day);
     nextDay.setDate(nextDay.getDate() + 1);
     const occupied = await Booking.find({
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       checkIn: { $lt: nextDay },
       checkOut: { $gt: day },
     })
@@ -284,7 +303,7 @@ router.get('/user/stats', protect, async (req, res) => {
     // Count concurrent bookings (overlapping with today)
     const concurrentCount = await Booking.countDocuments({
       userId: req.user._id,
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       checkIn: { $lt: now },
       checkOut: { $gt: now },
     });
@@ -292,7 +311,7 @@ router.get('/user/stats', protect, async (req, res) => {
     // Count bookings made today
     const dailyCount = await Booking.countDocuments({
       userId: req.user._id,
-      status: 'confirmed',
+      status: { $in: ['confirmed', 'pending', 'pending_cancel'] },
       createdAt: { $gte: startOfDay, $lte: endOfDay },
     });
 
@@ -453,6 +472,151 @@ router.post('/:id/cancel', protect, async (req, res) => {
   } catch (error) {
     console.error('Cancel booking error:', error);
     res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Staff/admin confirms a pending booking – booking becomes confirmed.
+router.post('/:id/confirm', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const isStaffOrAdmin = req.user.role === 'staff' || req.user.role === 'admin';
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({ message: 'Only staff or admin can confirm bookings.' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ message: 'Cancelled bookings cannot be confirmed.' });
+    }
+
+    if (booking.status !== 'pending') {
+      return res.status(200).json({
+        id: booking._id.toString(),
+        guestName: booking.guestName,
+        roomId: booking.roomId,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn.toISOString().split('T')[0],
+        checkOut: booking.checkOut.toISOString().split('T')[0],
+        nights: booking.nights,
+        guests: booking.guests,
+        total: booking.total,
+        status: booking.status,
+        txHash: booking.txHash || '',
+      });
+    }
+
+    booking.status = 'confirmed';
+
+    try {
+      const txHash = await recordBookingOnChain({
+        guestName: booking.guestName,
+        roomName: booking.roomName,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        total: booking.total,
+      });
+      if (txHash) {
+        booking.txHash = txHash;
+      }
+    } catch (err) {
+      console.error('Failed to record confirmed booking on chain', err);
+    }
+
+    await booking.save();
+
+    try {
+      const userEmail = (req.user.email && String(req.user.email).trim()) || 'unknown';
+      const actorName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || userEmail;
+      const checkInStr = booking.checkIn.toISOString().split('T')[0];
+      const checkOutStr = booking.checkOut.toISOString().split('T')[0];
+      const role = req.user.role || 'staff';
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail,
+        userName: actorName,
+        role,
+        action: 'booking_confirmed',
+        details: `Confirmed reservation: ${booking.roomName}, ${checkInStr} to ${checkOutStr} (${booking.nights} night(s))`,
+      });
+    } catch (err) {
+      console.error('[Audit] booking_confirmed:', err.message);
+    }
+
+    return res.json({
+      id: booking._id.toString(),
+      guestName: booking.guestName,
+      roomId: booking.roomId,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn.toISOString().split('T')[0],
+      checkOut: booking.checkOut.toISOString().split('T')[0],
+      nights: booking.nights,
+      guests: booking.guests,
+      total: booking.total,
+      status: booking.status,
+      txHash: booking.txHash || '',
+    });
+  } catch (error) {
+    console.error('Confirm booking error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Verify booking fingerprint using off-chain booking record and on-chain tx log.
+router.get('/:id/verify-fingerprint', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid booking id.' });
+    }
+
+    const booking = await Booking.findById(id).lean();
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found.' });
+    }
+
+    const isOwner = booking.userId?.toString() === req.user._id.toString();
+    const isStaffOrAdmin = req.user.role === 'staff' || req.user.role === 'admin';
+    if (!isOwner && !isStaffOrAdmin) {
+      return res.status(403).json({ message: 'Not authorized to verify this booking.' });
+    }
+
+    const fingerprint = computeBookingFingerprint({
+      guestName: booking.guestName,
+      roomName: booking.roomName,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      total: booking.total,
+    });
+
+    const onChain = booking.txHash
+      ? await verifyBookingFingerprintWithTx(booking.txHash, fingerprint.bookingRef)
+      : {
+          checked: false,
+          matched: false,
+          reason: 'No txHash on booking yet. Confirm booking first to record on-chain.',
+        };
+
+    return res.json({
+      bookingId: booking._id.toString(),
+      status: booking.status,
+      txHash: booking.txHash || '',
+      fingerprint: {
+        guestNameHash: fingerprint.guestNameHash,
+        roomNameHash: fingerprint.roomNameHash,
+        bookingRef: fingerprint.bookingRef,
+        checkInTs: fingerprint.checkInTs,
+        checkOutTs: fingerprint.checkOutTs,
+        total: fingerprint.total,
+      },
+      onChain,
+    });
+  } catch (error) {
+    console.error('Verify booking fingerprint error:', error);
+    return res.status(500).json({ message: 'Server Error' });
   }
 });
 

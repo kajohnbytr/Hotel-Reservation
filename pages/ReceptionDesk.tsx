@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { Room } from '../lib/store';
+import { getApiBaseUrl } from '../lib/api';
+import { getAuthItem } from '../lib/authSession';
 import { toast } from 'sonner';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 interface Reservation {
   id: string;
@@ -14,7 +16,7 @@ interface Reservation {
   nights: number;
   guests: number;
   total: number;
-   status: 'confirmed' | 'cancelled' | 'pending_cancel';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'pending_cancel';
 }
 
 interface RoomStatus {
@@ -33,7 +35,7 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
+  const token = getAuthItem('aurora_token');
 
   useEffect(() => {
     if (!token) {
@@ -92,6 +94,30 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
     } catch (error) {
       console.error('Approve cancellation error:', error);
       toast.error('Could not confirm cancellation. Please try again.');
+    }
+  };
+
+  const handleConfirmBooking = async (id: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/bookings/${encodeURIComponent(id)}/confirm`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not confirm booking.');
+        return;
+      }
+      setReservations((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'confirmed' } : r))
+      );
+      toast.success('Booking confirmed.');
+    } catch (error) {
+      console.error('Confirm booking error:', error);
+      toast.error('Could not confirm booking. Please try again.');
     }
   };
 
@@ -261,6 +287,10 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
                           <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-800">
                             Pending cancel
                           </span>
+                        ) : res.status === 'pending' ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                            Pending approval
+                          </span>
                         ) : (
                           <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
                             Confirmed
@@ -275,6 +305,14 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
                             className="inline-flex items-center rounded-md border border-red-400 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-red-700 hover:bg-red-500/10"
                           >
                             Confirm cancel
+                          </button>
+                        ) : res.status === 'pending' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmBooking(res.id)}
+                            className="inline-flex items-center rounded-md border border-emerald-500 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-emerald-700 hover:bg-emerald-500/10"
+                          >
+                            Confirm booking
                           </button>
                         ) : (
                           <span className="text-xs text-[#0A2342]/50 dark:text-[#F9F7F2]/50">—</span>

@@ -16,10 +16,88 @@ import crypto from 'crypto';
 const router = express.Router();
 const VERIFICATION_TOKEN_TTL_MS = 30 * 60 * 1000;
 const VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+const captchaStore = new Map();
+
+function cleanupExpiredCaptchas() {
+  const now = Date.now();
+  for (const [id, entry] of captchaStore.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      captchaStore.delete(id);
+    }
+  }
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function createCaptchaChallenge() {
+  const left = randomInt(1, 99);
+  const right = randomInt(1, 10);
+  const prompt = `What is ${left} + ${right}?`;
+  const answer = String(left + right);
+
+  const captchaId = crypto.randomUUID();
+  const expiresAt = Date.now() + CAPTCHA_TTL_MS;
+  captchaStore.set(captchaId, { answer, expiresAt });
+
+  return {
+    captchaId,
+    prompt,
+    expiresInSeconds: Math.floor(CAPTCHA_TTL_MS / 1000),
+  };
+}
+
+function verifyCaptcha(captchaId, captchaAnswer) {
+  cleanupExpiredCaptchas();
+  if (!captchaId || !captchaAnswer) return { ok: false, reason: 'missing' };
+
+  const entry = captchaStore.get(String(captchaId));
+  if (!entry || entry.expiresAt <= Date.now()) {
+    captchaStore.delete(String(captchaId));
+    return { ok: false, reason: 'expired' };
+  }
+
+  const normalizedAnswer = String(captchaAnswer).trim();
+  const isMatch = normalizedAnswer === entry.answer;
+  if (!isMatch) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  // One-time use once solved successfully.
+  captchaStore.delete(String(captchaId));
+  return { ok: true };
+}
 
 function normalizeBaseUrl(url) {
   if (!url || typeof url !== 'string') return '';
   return url.trim().replace(/\/+$/, '');
+}
+
+function parseUrl(url) {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function isLoopbackHostname(hostname) {
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+}
+
+function getRequestOrigin(req) {
+  return normalizeBaseUrl(req.get('origin'));
+}
+
+function getDerivedClientBaseUrl() {
+  const publicApiBase = normalizeBaseUrl(process.env.PUBLIC_API_URL || process.env.SERVER_URL);
+  const parsedPublicApiBase = parseUrl(publicApiBase);
+  if (!parsedPublicApiBase) return '';
+
+  const clientPort = process.env.CLIENT_PORT || '5173';
+  return `${parsedPublicApiBase.protocol}//${parsedPublicApiBase.hostname}:${clientPort}`;
 }
 
 function getPublicApiBase(req) {
@@ -33,8 +111,30 @@ function getPublicApiBase(req) {
   return `${protocol}://${host}`;
 }
 
-function getClientBaseUrl() {
-  return normalizeBaseUrl(process.env.CLIENT_URL || 'http://localhost:5173');
+function getClientBaseUrl(req) {
+  const requestOrigin = getRequestOrigin(req);
+  if (requestOrigin) return requestOrigin;
+
+  const configuredClientBase = normalizeBaseUrl(process.env.CLIENT_URL);
+  const parsedConfiguredClientBase = parseUrl(configuredClientBase);
+  if (parsedConfiguredClientBase && !isLoopbackHostname(parsedConfiguredClientBase.hostname)) {
+    return configuredClientBase;
+  }
+
+  return getDerivedClientBaseUrl() || configuredClientBase || 'http://localhost:5173';
+}
+
+function buildVerificationUrls(req, rawToken) {
+  const encodedToken = encodeURIComponent(rawToken);
+  const clientBase = getClientBaseUrl(req);
+  const publicApiBase = getPublicApiBase(req);
+  const frontendVerifyUrl = clientBase ? `${clientBase}/verify-email?token=${encodedToken}` : '';
+  const backendVerifyUrl = `${publicApiBase}/api/users/verify-email/confirm?token=${encodedToken}`;
+
+  return {
+    verifyUrl: frontendVerifyUrl || backendVerifyUrl,
+    fallbackVerifyUrl: frontendVerifyUrl && frontendVerifyUrl !== backendVerifyUrl ? backendVerifyUrl : '',
+  };
 }
 
 async function verifyEmailToken(rawToken) {
@@ -140,9 +240,10 @@ const authLimiter = rateLimit({
 });
 
 const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '6h';
+const REFRESH_TOKEN_EXPIRY = '7d';
+const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 15 * 60;
 
-// Registration — creates unverified user (verification email is sent on explicit request)
+// Registration — only guest accounts require email verification.
 router.post('/register', authLimiter, registerValidation, async (req, res) => {
   try {
     const { firstName, lastName, email, password, role } = req.body;
@@ -176,13 +277,15 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       userRole = 'guest';
     }
 
+    const requiresEmailVerification = userRole === 'guest';
+
     const user = await User.create({
       firstName,
       lastName,
       email,
       password,
       role: userRole,
-      isVerified: false,
+      isVerified: !requiresEmailVerification,
       verificationToken: undefined,
       verificationTokenExpire: undefined,
     });
@@ -202,9 +305,18 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
       console.error('[Audit] Failed to record signup:', err.message, err);
     }
 
-    res.status(201).json({
-      message: 'Registration successful. Click "Send verification email" to receive your verification link.',
+    if (requiresEmailVerification) {
+      return res.status(201).json({
+        message: 'Registration successful. Click "Send verification email" to receive your verification link.',
+        email: user.email,
+        requiresEmailVerification: true,
+      });
+    }
+
+    return res.status(201).json({
+      message: 'Registration successful. You can sign in immediately.',
       email: user.email,
+      requiresEmailVerification: false,
     });
   } catch (error) {
     console.error('[Register] Error:', error);
@@ -246,7 +358,7 @@ router.get('/verification-status', async (req, res) => {
 // Backend-hosted verification page for cross-device email verification.
 router.get('/verify-email/confirm', async (req, res) => {
   const { token } = req.query;
-  const loginUrl = `${getClientBaseUrl()}/login`;
+  const loginUrl = `${getClientBaseUrl(req)}/login`;
 
   try {
     const result = await verifyEmailToken(token);
@@ -301,8 +413,13 @@ router.post('/resend-verification', async (req, res) => {
     user.verificationTokenExpire = Date.now() + VERIFICATION_TOKEN_TTL_MS;
     await user.save();
 
-    const publicApiBase = getPublicApiBase(req);
-    const verifyUrl = `${publicApiBase}/api/users/verify-email/confirm?token=${rawToken}`;
+    const { verifyUrl, fallbackVerifyUrl } = buildVerificationUrls(req, rawToken);
+    const fallbackLinkHtml = fallbackVerifyUrl
+      ? `
+          <p style="color: #666; font-size: 13px; margin-top: 24px;">If the button above does not open correctly, use this direct backend link instead:</p>
+          <p style="color: #0A2342; font-size: 13px; word-break: break-all;">${fallbackVerifyUrl}</p>
+        `
+      : '';
 
     const html = `
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
@@ -312,7 +429,7 @@ router.post('/resend-verification', async (req, res) => {
         <div style="padding: 40px 30px; background-color: #ffffff;">
           <h2 style="color: #0A2342; margin-top: 0;">Verify Your Email</h2>
           <p style="color: #333; font-size: 16px; line-height: 1.6;">Hello ${user.firstName},</p>
-          <p style="color: #333; font-size: 16px; line-height: 1.6;">Here is your new verification link.</p>
+          <p style="color: #333; font-size: 16px; line-height: 1.6;">Use the button below to verify your Aurora account.</p>
           <p style="color: #555; font-size: 14px;">This link expires in <strong>30 minutes</strong>.</p>
           <div style="text-align: center; margin: 40px 0;">
             <a href="${verifyUrl}" style="background-color: #0A2342; color: #F9F7F2; padding: 16px 40px; text-decoration: none; font-weight: bold; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; border-radius: 4px; display: inline-block;">
@@ -321,6 +438,7 @@ router.post('/resend-verification', async (req, res) => {
           </div>
           <p style="color: #666; font-size: 13px;">Or copy this link into your browser:</p>
           <p style="color: #D4AF37; font-size: 13px; word-break: break-all;">${verifyUrl}</p>
+          ${fallbackLinkHtml}
         </div>
         <div style="background-color: #0A2342; padding: 20px; text-align: center;">
           <p style="color: #D4AF37; font-size: 12px; margin: 0;">© 2024 AURORA RESORT. ALL RIGHTS RESERVED.</p>
@@ -336,10 +454,21 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
-// Login — blocks unverified users
+// Generate a simple CAPTCHA challenge for guest login.
+router.get('/captcha', async (_req, res) => {
+  try {
+    cleanupExpiredCaptchas();
+    return res.status(200).json(createCaptchaChallenge());
+  } catch (error) {
+    console.error('[Captcha] Error generating challenge:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Login — blocks only unverified guest accounts
 router.post('/login', authLimiter, loginValidation, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaId, captchaAnswer } = req.body;
 
     const attempt = getLoginAttempts(email);
     if (attempt && attempt.lockoutUntil && Date.now() < attempt.lockoutUntil) {
@@ -352,6 +481,18 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     }
 
     const user = await User.findOne({ email });
+
+    // Guest accounts must solve CAPTCHA for every login attempt.
+    if (user?.role === 'guest') {
+      const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+      if (!captchaResult.ok) {
+        return res.status(400).json({
+          message: 'Please solve the CAPTCHA before signing in.',
+          code: 'CAPTCHA_REQUIRED',
+        });
+      }
+    }
+
     if (!user || !(await user.matchPassword(password))) {
       const { remainingAttempts, lockoutUntil } = recordFailedAttempt(email);
       const payload = { message: 'Invalid email or password', remainingAttempts };
@@ -362,8 +503,8 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
       return res.status(401).json(payload);
     }
 
-    // Block unverified users
-    if (!user.isVerified) {
+    // Only guests require email verification.
+    if (user.role === 'guest' && !user.isVerified) {
       return res.status(403).json({
         message: 'Please verify your email before signing in.',
         unverified: true,
@@ -407,10 +548,84 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
       role: user.role || 'guest',
       token,
       refreshToken,
-      expiresIn: 6 * 3600,
+      expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     });
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Staff login — no CAPTCHA, only staff/admin accounts can authenticate here.
+router.post('/staff-login', authLimiter, loginValidation, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const attempt = getLoginAttempts(email);
+    if (attempt && attempt.lockoutUntil && Date.now() < attempt.lockoutUntil) {
+      const retryAfterSeconds = Math.ceil((attempt.lockoutUntil - Date.now()) / 1000);
+      return res.status(429).json({
+        message: 'Too many failed login attempts. Please try again later.',
+        retryAfterSeconds,
+        lockedUntil: new Date(attempt.lockoutUntil).toISOString(),
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user || !(await user.matchPassword(password))) {
+      const { remainingAttempts, lockoutUntil } = recordFailedAttempt(email);
+      const payload = { message: 'Invalid email or password', remainingAttempts };
+      if (lockoutUntil) {
+        payload.retryAfterSeconds = Math.ceil((lockoutUntil - Date.now()) / 1000);
+        payload.lockedUntil = new Date(lockoutUntil).toISOString();
+      }
+      return res.status(401).json(payload);
+    }
+
+    const isStaffOrAdmin = user.role === 'staff' || user.role === 'admin';
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({ message: 'This is not a staff account.' });
+    }
+
+    clearLoginAttempts(email);
+
+    const now = new Date();
+    user.lastLogin = now;
+    user.lastActivity = now;
+    user.isOnline = true;
+    await user.save();
+
+    const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
+    const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
+
+    try {
+      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
+      const role = user.role === 'admin' ? 'admin' : 'staff';
+      const action = role === 'admin' ? 'admin_login' : 'staff_login';
+      await AuditLog.create({
+        userId: user._id,
+        userEmail,
+        userName,
+        role,
+        action,
+        details: `${role === 'admin' ? 'Admin' : 'Staff'} logged in`,
+      });
+    } catch (err) {
+      console.error('[Audit] Failed to record staff login:', err.message, err);
+    }
+
+    return res.status(200).json({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      token,
+      refreshToken,
+      expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server Error' });
   }
 });
 
@@ -428,7 +643,7 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ message: 'Not authorized' });
     }
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
-    res.status(200).json({ token, expiresIn: 6 * 3600 });
+    res.status(200).json({ token, expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS });
   } catch (error) {
     return res.status(401).json({ message: 'Not authorized, token failed' });
   }

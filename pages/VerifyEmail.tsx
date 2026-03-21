@@ -1,8 +1,9 @@
 // src/pages/VerifyEmail.tsx
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
+import { getApiBaseUrl } from '../lib/api';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 type Status = 'verifying' | 'success' | 'error' | 'pending';
 
@@ -33,7 +34,7 @@ export function VerifyEmail({
     }
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/users/verify-email?token=${token}`);
+        const res = await fetch(`${API_BASE}/api/users/verify-email?token=${encodeURIComponent(token)}`);
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           setStatus('success');

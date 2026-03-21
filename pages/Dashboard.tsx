@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { User, Room } from '../lib/store';
+import { getApiBaseUrl } from '../lib/api';
+import { getAuthItem, setAuthItem } from '../lib/authSession';
 import { BarChart3, Shield } from 'lucide-react';
 import { formatDate } from '../lib/utils';
 import { toast } from 'sonner';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 interface DashboardBooking {
   id: string;
@@ -15,7 +17,7 @@ interface DashboardBooking {
   checkOut: string;
   nights: number;
   total: number;
-  status: 'confirmed' | 'cancelled' | 'pending_cancel';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'pending_cancel';
   txHash?: string;
 }
 
@@ -25,7 +27,7 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
 
   useEffect(() => {
     const refreshAccessToken = async (): Promise<string | null> => {
-      const refreshToken = localStorage.getItem('aurora_refresh_token');
+      const refreshToken = getAuthItem('aurora_refresh_token');
       if (!refreshToken) return null;
 
       try {
@@ -38,7 +40,7 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
         const refreshData = await refreshRes.json().catch(() => ({}));
         const newToken = typeof refreshData.token === 'string' ? refreshData.token : null;
         if (newToken) {
-          localStorage.setItem('aurora_token', newToken);
+          setAuthItem('aurora_token', newToken);
           return newToken;
         }
       } catch {
@@ -48,8 +50,8 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
       return null;
     };
 
-    const loadBookings = async () => {
-      let token = localStorage.getItem('aurora_token');
+    const loadBookings = async (silent = false) => {
+      let token = getAuthItem('aurora_token');
       if (!token) return;
 
       setLoading(true);
@@ -82,7 +84,9 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
         setBookings((data || []).filter((b) => b.status !== 'cancelled'));
       } catch (err) {
         console.error('Dashboard bookings load error:', err);
-        toast.error('Could not load your bookings. Please try again later.');
+        if (!silent) {
+          toast.error('Could not load your bookings. Please try again later.');
+        }
       } finally {
         setLoading(false);
       }
@@ -93,10 +97,33 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
       return;
     }
     loadBookings();
+
+    // Keep status in sync when staff confirms/cancels from another session.
+    const refreshInterval = window.setInterval(() => {
+      loadBookings(true);
+    }, 10000);
+
+    const handleFocusRefresh = () => {
+      loadBookings(true);
+    };
+    window.addEventListener('focus', handleFocusRefresh);
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        loadBookings(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', handleFocusRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
   }, [user]);
 
   const handleCancel = async (bookingId: string) => {
-    const token = localStorage.getItem('aurora_token');
+    const token = getAuthItem('aurora_token');
     if (!token) {
       toast.error('You are not logged in.');
       return;
@@ -178,7 +205,24 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
                         <div>
                           <div className="flex justify-between items-start mb-2">
                             <h3 className="text-xl font-serif text-[#D4AF37]">{booking.roomName || room?.name}</h3>
-                            <span className="text-sm font-bold text-[#F9F7F2]">₱{booking.total}</span>
+                            <div className="flex items-center gap-2">
+                              {booking.status === 'pending' && (
+                                <span className="inline-flex items-center rounded-full bg-amber-400/20 border border-amber-300/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-200">
+                                  Pending
+                                </span>
+                              )}
+                              {booking.status === 'pending_cancel' && (
+                                <span className="inline-flex items-center rounded-full bg-yellow-400/20 border border-yellow-300/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-yellow-200">
+                                  Pending Cancel
+                                </span>
+                              )}
+                              {booking.status === 'confirmed' && (
+                                <span className="inline-flex items-center rounded-full bg-emerald-400/20 border border-emerald-300/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
+                                  Confirmed
+                                </span>
+                              )}
+                              <span className="text-sm font-bold text-[#F9F7F2]">₱{booking.total}</span>
+                            </div>
                           </div>
                           <p className="text-sm text-[#F9F7F2]/60 uppercase tracking-wider mb-2">
                             Check-in: {formatDate(booking.checkIn)} • Check-out: {formatDate(booking.checkOut)} • {booking.nights} Night(s)
@@ -186,6 +230,11 @@ export function Dashboard({ user, rooms }: { user: User | null; rooms: Room[] })
                           {booking.status === 'pending_cancel' && (
                             <p className="text-xs font-semibold text-yellow-300 uppercase tracking-widest">
                               Pending cancellation – awaiting staff approval
+                            </p>
+                          )}
+                          {booking.status === 'pending' && (
+                            <p className="text-xs font-semibold text-amber-300 uppercase tracking-widest">
+                              Pending booking approval – awaiting staff confirmation
                             </p>
                           )}
                         </div>

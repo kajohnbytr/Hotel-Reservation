@@ -1,23 +1,88 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Sparkles } from 'lucide-react';
+import { getApiBaseUrl } from '../lib/api';
 
 const PRE_SEND_DELAY_MS = 120;
 const TYPING_CHAR_INTERVAL_MS = 8;
 const MAX_TYPING_ANIMATION_CHARS = 140;
 
+const STARTER_QUESTIONS = [
+  'What rooms are available?',
+  'What are the room prices?',
+  'Does the hotel provide free WiFi?',
+  'How do I make a reservation?',
+];
+
 /** Removes consecutive repeated words so the bot doesn't say "the the" or "room room". */
 function deduplicateRepeatedWords(text: string): string {
   if (!text || typeof text !== 'string') return text;
+
+  // Preserve intentional line breaks by deduplicating on each line.
   return text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter((word, i, arr) => i === 0 || word.toLowerCase() !== arr[i - 1]?.toLowerCase())
-    .join(' ');
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/[ \t]+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter((word, i, arr) => i === 0 || word.toLowerCase() !== arr[i - 1]?.toLowerCase())
+        .join(' '),
+    )
+    .join('\n')
+    .trim();
+}
+
+function normalizeRoomCatalogMessage(text: string): string {
+  const source = String(text || '');
+  const lower = source.toLowerCase();
+  if (!/(available rooms|room prices|room options)/.test(lower)) return source;
+
+  const pattern = /([A-Za-z][A-Za-z0-9\s'\-]*?)\s*₱\s?(\d+(?:,\d+)*)\s*(?:\/\s*night|per\s*night)?\s*(?:•|-)?\s*up to\s*(\d+)\s*guests/gi;
+  const matches = [...source.matchAll(pattern)];
+  if (matches.length < 2) return source;
+
+  const first = matches[0];
+  const headingRaw = source.slice(0, first.index ?? 0).trim();
+  const heading = headingRaw || 'Here are our available rooms:';
+
+  const blocks = matches.map((m) => {
+    const name = String(m[1] || '').trim();
+    const price = String(m[2] || '').trim();
+    const guests = String(m[3] || '').trim();
+    return `**${name}**\n- Price: ₱${price} per night\n- Capacity: Up to ${guests} guests`;
+  });
+
+  const last = matches[matches.length - 1];
+  const tailStart = (last.index ?? 0) + last[0].length;
+  const footer = source.slice(tailStart).trim();
+
+  return `${heading}\n\n${blocks.join('\n\n')}${footer ? `\n\n${footer}` : ''}`;
+}
+
+function renderInlineRichText(line: string): React.ReactNode {
+  const parts = String(line || '').split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return parts.map((part, idx) => {
+    const boldMatch = part.match(/^\*\*([^*]+)\*\*$/);
+    if (boldMatch) {
+      return <strong key={`b-${idx}`}>{boldMatch[1]}</strong>;
+    }
+    return <React.Fragment key={`t-${idx}`}>{part}</React.Fragment>;
+  });
+}
+
+function renderMultilineText(text: string): React.ReactNode {
+  const lines = String(text || '').split(/\n/);
+  return lines.map((line, idx) => (
+    <React.Fragment key={`line-${idx}`}>
+      {line.startsWith('- ') ? <>• {renderInlineRichText(line.slice(2))}</> : renderInlineRichText(line)}
+      {idx < lines.length - 1 ? <br /> : null}
+    </React.Fragment>
+  ));
 }
 
 export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void }) {
+  const API_BASE = getApiBaseUrl();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([
     { role: 'bot', text: 'Welcome to Aurora. Ask about rooms, prices, or reservations, then share your budget and number of guests for recommendations.' },
@@ -26,7 +91,12 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   const [isTyping, setIsTyping] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [ollamaModelStatus, setOllamaModelStatus] = useState<'unknown' | 'ok' | 'missing'>('unknown');
+  const [showStarterPanel, setShowStarterPanel] = useState(false);
+  const [starterDismissed, setStarterDismissed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasConversationStarted = messages.some((m) => m.role === 'user');
+  const firstMessage = messages[0];
+  const remainingMessages = messages.slice(1);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -34,7 +104,15 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     }
   }, [messages, isOpen]);
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  useEffect(() => {
+    if (!isOpen || hasConversationStarted || starterDismissed) {
+      setShowStarterPanel(false);
+      return;
+    }
+
+    const timer = setTimeout(() => setShowStarterPanel(true), 180);
+    return () => clearTimeout(timer);
+  }, [isOpen, hasConversationStarted, starterDismissed]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -82,7 +160,8 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
 
   // Smoothly stream a bot response character by character
   const streamBotMessage = async (text: string, recommendedType: string | null) => {
-    const finalText = deduplicateRepeatedWords(text || '');
+    const normalized = normalizeRoomCatalogMessage(text || '');
+    const finalText = deduplicateRepeatedWords(normalized);
     if (!finalText) {
       setIsTyping(false);
       return;
@@ -146,11 +225,11 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
   };
 
   // ================= SEND MESSAGE =================
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const sendUserMessage = async (userMessage: string) => {
+    if (!userMessage.trim() || isTyping) return;
 
-    const userMessage = input;
-    setInput('');
+    setStarterDismissed(true);
+    setShowStarterPanel(false);
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsTyping(true);
 
@@ -164,6 +243,18 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
     if (data.type) recommendedType = data.type;
 
     await streamBotMessage(botResponse, recommendedType);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userMessage = input;
+    setInput('');
+    await sendUserMessage(userMessage);
+  };
+
+  const handleStarterClick = async (question: string) => {
+    if (isTyping) return;
+    await sendUserMessage(question);
   };
 
   return (
@@ -215,16 +306,56 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {firstMessage && (
+                <div className={`flex ${firstMessage.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[85%] p-4 text-sm leading-relaxed ${
+                      firstMessage.role === 'user'
+                        ? 'bg-[#0A2342] text-white rounded-t-xl rounded-bl-xl'
+                        : 'bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 text-[#0A2342] dark:text-[#F9F7F2] rounded-t-xl rounded-br-xl'
+                    } whitespace-pre-wrap`}
+                  >
+                    {renderMultilineText(firstMessage.text)}
+
+                    {firstMessage.role === 'bot' && showStarterPanel && !hasConversationStarted && !isTyping && (
+                      <div className="mt-4 pt-3 border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/15">
+                        <p className="text-[11px] uppercase tracking-widest text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mb-2">
+                          Start by asking
+                        </p>
+                        <ol className="list-decimal pl-5 space-y-1.5">
+                          {STARTER_QUESTIONS.map((question, idx) => (
+                            <motion.li
+                              key={question}
+                              initial={{ opacity: 0, y: -6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.18, delay: idx * 0.04 }}
+                              className="text-sm text-[#0A2342]/80 dark:text-[#F9F7F2]/80"
+                            >
+                              <button
+                                onClick={() => handleStarterClick(question)}
+                                className="text-left hover:text-[#0A2342] dark:hover:text-white transition-colors"
+                              >
+                                {question}
+                              </button>
+                            </motion.li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {remainingMessages.map((msg, idx) => (
+                <div key={`${idx + 1}-${msg.role}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[85%] p-4 text-sm leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-[#0A2342] text-white rounded-t-xl rounded-bl-xl'
                         : 'bg-white dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 text-[#0A2342] dark:text-[#F9F7F2] rounded-t-xl rounded-br-xl'
-                    }`}
+                    } whitespace-pre-wrap`}
                   >
-                    {msg.text}
+                    {renderMultilineText(msg.text)}
                   </div>
                 </div>
               ))}
@@ -242,7 +373,6 @@ export function Chatbot({ onRecommend }: { onRecommend?: (type: string) => void 
               )}
             </div>
 
-            {/* Suggestions removed per user request */}
             <div className="p-4 bg-white dark:bg-[#05152a] border-t border-[#0A2342]/10 dark:border-[#F9F7F2]/10">
               <div className="flex gap-2">
                 <input

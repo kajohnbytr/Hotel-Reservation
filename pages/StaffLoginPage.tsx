@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Logo';
+import { getApiBaseUrl } from '../lib/api';
+import { setAuthItem } from '../lib/authSession';
 import { useTheme } from '../lib/theme';
 import { Sun, Moon } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 export function StaffLogin({
   onLogin,
@@ -27,7 +29,7 @@ export function StaffLogin({
     setError('');
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/users/login`, {
+      const res = await fetch(`${API_BASE}/api/users/staff-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -48,9 +50,9 @@ export function StaffLogin({
 
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'Staff';
       const user = { id: String(data._id), email: data.email, name, role: 'staff' as const };
-      localStorage.setItem('aurora_user', JSON.stringify(user));
-      if (data.token) localStorage.setItem('aurora_token', data.token);
-      if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
+      setAuthItem('aurora_user', JSON.stringify(user));
+      if (data.token) setAuthItem('aurora_token', data.token);
+      if (data.refreshToken) setAuthItem('aurora_refresh_token', data.refreshToken);
       onLogin(user);
     } catch {
       setError('Could not sign in. Try again.');

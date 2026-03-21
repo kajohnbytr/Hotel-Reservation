@@ -1,3 +1,6 @@
+import { getApiBaseUrl } from './api';
+import { getAuthItem, setAuthItem, clearAuthSession } from './authSession';
+
 export interface Room {
   id: string;
   name: string;
@@ -108,7 +111,7 @@ export interface Booking {
   date: string;
   nights: number;
   totalPrice: number;
-  status: 'confirmed';
+  status: 'pending' | 'confirmed';
   txHash: string;
   timestamp: string;
 }
@@ -138,7 +141,7 @@ export const saveBooking = (booking: Booking) => {
 
 export const getUser = (): User | null => {
   try {
-    const stored = localStorage.getItem('aurora_user');
+    const stored = getAuthItem('aurora_user');
     return stored ? JSON.parse(stored) : null;
   } catch (e) {
     return null;
@@ -147,7 +150,7 @@ export const getUser = (): User | null => {
 
 export const loginUser = (email: string, name: string) => {
   const user = { id: 'u_' + Math.random().toString(36).substr(2, 9), email, name };
-  localStorage.setItem('aurora_user', JSON.stringify(user));
+  setAuthItem('aurora_user', JSON.stringify(user));
   return user;
 };
 
@@ -156,12 +159,12 @@ export const registerUser = (email: string, name: string) => {
 };
 
 export const logoutUser = async () => {
-  const token = localStorage.getItem('aurora_token');
+  const token = getAuthItem('aurora_token');
   
   // Notify backend about logout
   if (token) {
     try {
-      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const apiBase = getApiBaseUrl();
       await fetch(`${apiBase}/api/auth/logout`, {
         method: 'POST',
         headers: {
@@ -173,10 +176,8 @@ export const logoutUser = async () => {
     }
   }
   
-  // Clear local storage
-  localStorage.removeItem('aurora_user');
-  localStorage.removeItem('aurora_token');
-  localStorage.removeItem('aurora_refresh_token');
+  // Clear auth session storage for this tab.
+  clearAuthSession();
 };
 
 /** Decode JWT payload without verification (client-side expiry check only). */
@@ -193,7 +194,7 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
 
 /** True if refresh token is missing or expired (session over). */
 export function isSessionExpired(): boolean {
-  const refreshToken = localStorage.getItem('aurora_refresh_token');
+  const refreshToken = getAuthItem('aurora_refresh_token');
   if (!refreshToken) return true;
   const payload = decodeJwtPayload(refreshToken);
   if (!payload || typeof payload.exp !== 'number') return true;

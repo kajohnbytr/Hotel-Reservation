@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, X, Users } from 'lucide-react';
+import { getApiBaseUrl } from '../lib/api';
 import { Room } from '../lib/store';
+import { getAuthItem } from '../lib/authSession';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
+const MAX_GUESTS_LIMIT = 20;
+const MAX_PRICE_PER_NIGHT = 50000;
 
 export function RoomCard({
   room,
   onBook,
   adminMode = false,
+  detailsOnly = false,
   onRoomUpdated,
 }: {
   room: Room;
   onBook: (id: string) => void;
   adminMode?: boolean;
+  detailsOnly?: boolean;
   onRoomUpdated?: (updated: Room) => void;
 }) {
   const [isImageOpen, setIsImageOpen] = useState(false);
@@ -93,6 +99,16 @@ export function RoomCard({
               className="w-full py-4 bg-[#D4AF37] text-[#0A2342] hover:bg-[#e6c55b] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
             >
               Edit details
+            </button>
+          </div>
+        ) : detailsOnly ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen(true)}
+              className="w-full py-4 border border-[#F9F7F2]/20 text-[#F9F7F2] hover:border-[#D4AF37] hover:text-[#D4AF37] transition-colors uppercase tracking-widest text-xs font-bold rounded-lg"
+            >
+              Details
             </button>
           </div>
         ) : (
@@ -280,11 +296,25 @@ export function RoomCard({
               onSubmit={async (e) => {
                 e.preventDefault();
                 setEditError('');
-                const token = localStorage.getItem('aurora_token');
+                const token = getAuthItem('aurora_token');
                 if (!token) {
                   setEditError('You are not authorized to edit rooms.');
                   return;
                 }
+
+                const parsedPricePerNight = Number(editPrice);
+                const parsedMaxGuests = Number(editMaxGuests);
+
+                if (!Number.isFinite(parsedPricePerNight) || parsedPricePerNight <= 0 || parsedPricePerNight > MAX_PRICE_PER_NIGHT) {
+                  setEditError(`Price per night must be greater than 0 and not more than ${MAX_PRICE_PER_NIGHT}.`);
+                  return;
+                }
+
+                if (!Number.isInteger(parsedMaxGuests) || parsedMaxGuests < 1 || parsedMaxGuests > MAX_GUESTS_LIMIT) {
+                  setEditError(`Max guests must be a whole number between 1 and ${MAX_GUESTS_LIMIT}.`);
+                  return;
+                }
+
                 setEditSaving(true);
                 try {
                   const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(room.id)}`, {
@@ -296,8 +326,8 @@ export function RoomCard({
                     body: JSON.stringify({
                       name: editName,
                       type: editType,
-                      pricePerNight: Number(editPrice),
-                      maxGuests: Number(editMaxGuests) || room.maxGuests,
+                      pricePerNight: parsedPricePerNight,
+                      maxGuests: parsedMaxGuests,
                       description: editDescription,
                       imageUrl: editImage,
                       amenities: editAmenities
@@ -317,8 +347,8 @@ export function RoomCard({
                     ...room,
                     name: editName,
                     type: editType as Room['type'],
-                    price: Number(editPrice),
-                    maxGuests: Number(editMaxGuests) || room.maxGuests,
+                    price: parsedPricePerNight,
+                    maxGuests: parsedMaxGuests,
                     description: editDescription,
                     image: editImage,
                     amenities: editAmenities
@@ -365,7 +395,9 @@ export function RoomCard({
                   </label>
                   <input
                     type="number"
-                    min={0}
+                    min={0.01}
+                    max={MAX_PRICE_PER_NIGHT}
+                    step={0.01}
                     value={editPrice}
                     onChange={(e) => setEditPrice(e.target.value)}
                     className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"
@@ -379,6 +411,8 @@ export function RoomCard({
                   <input
                     type="number"
                     min={1}
+                    max={MAX_GUESTS_LIMIT}
+                    step={1}
                     value={editMaxGuests}
                     onChange={(e) => setEditMaxGuests(e.target.value)}
                     className="w-full rounded-lg border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#05152a] px-3 py-2 text-sm text-[#0A2342] dark:text-[#F9F7F2]"

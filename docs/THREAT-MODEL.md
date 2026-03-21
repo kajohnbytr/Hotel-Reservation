@@ -33,7 +33,7 @@ A short threat model for the Aurora Hotel Reservation app: data flow, trust boun
 |--------|------------|
 | **S**poofing | Strong password policy, bcrypt, no credential stuffing (rate limit). JWT proves identity; refresh token rotation reduces token theft impact. |
 | **T**ampering | Input validation (express-validator, password policy). Mongoose prevents injection. HTTPS in production. |
-| **R**epudiation | Generic login errors (no “user exists” leak). No full audit log yet; can add auth-event logging. |
+| **R**epudiation | Generic login errors (no “user exists” leak). Structured audit logs exist for key auth/admin/booking actions; cryptographic log integrity can be added later. |
 | **I**nformation disclosure | Passwords never logged or returned. .env not in repo. Generic error messages to client. |
 | **D**enial of service | Rate limiting (global + auth). Body size limit. DB connection handling (retry in db.js). |
 | **E**levation of privilege | Single user role; no admin path in this app. Protected routes require valid JWT only. |
@@ -50,7 +50,7 @@ A short threat model for the Aurora Hotel Reservation app: data flow, trust boun
 | A06 Vulnerable Components | Keep deps updated; run `npm audit`. |
 | A07 Auth and Session Failures | JWT + refresh, secure password policy, generic login errors, logout clears tokens. |
 | A08 Software and Data Integrity | No unsigned client-side code loading from untrusted sources; dependencies from npm. |
-| A09 Logging and Monitoring Failures | Basic error logging; no PII in logs. Can add structured auth/audit logs. |
+| A09 Logging and Monitoring Failures | Structured auth/admin/booking audit logs are present; centralized alerting and integrity signing are future improvements. |
 | A10 SSRF | No server-side fetch of user-supplied URLs in this app. |
 
 ## 4. Data flow diagram (simplified)

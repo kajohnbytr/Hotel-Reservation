@@ -1,8 +1,33 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { getApiBaseUrl } from '../lib/api';
+import { setAuthItem } from '../lib/authSession';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
+
+function parseMathCaptcha(prompt: string) {
+  if (!prompt) return null;
+  const strictMatch = prompt.match(/what\s+is\s+(\d+)\s*([+\-])\s*(\d+)\?/i);
+  if (strictMatch) {
+    return {
+      left: strictMatch[1],
+      operator: strictMatch[2],
+      right: strictMatch[3],
+    };
+  }
+
+  const looseMatch = prompt.match(/(\d+)\s*([+\-])\s*(\d+)/);
+  if (looseMatch) {
+    return {
+      left: looseMatch[1],
+      operator: looseMatch[2],
+      right: looseMatch[3],
+    };
+  }
+
+  return null;
+}
 
 export function Login({
   onLogin,
@@ -13,6 +38,10 @@ export function Login({
   onNavigateToSignup: () => void;
   onNavigateToVerify?: (email: string) => void;
 }) {
+  const preventSpaceKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === ' ') e.preventDefault();
+  };
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +52,11 @@ export function Login({
   const [lockoutSecondsLeft, setLockoutSecondsLeft] = useState<number | null>(null);
   const [adminSetupRequired, setAdminSetupRequired] = useState(false);
   const [adminCheckDone, setAdminCheckDone] = useState(false);
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaPrompt, setCaptchaPrompt] = useState('');
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captchaError, setCaptchaError] = useState('');
 
   // Forgot password
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -60,6 +94,34 @@ export function Login({
     };
   }, []);
 
+  const loadCaptcha = async (clearAnswer = true) => {
+    setCaptchaLoading(true);
+    setCaptchaError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/users/captcha`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCaptchaError('Could not load CAPTCHA. Please refresh.');
+        setCaptchaId('');
+        setCaptchaPrompt('');
+      } else {
+        setCaptchaId(typeof data.captchaId === 'string' ? data.captchaId : '');
+        setCaptchaPrompt(typeof data.prompt === 'string' ? data.prompt : '');
+      }
+    } catch {
+      setCaptchaError('Could not load CAPTCHA. Please refresh.');
+      setCaptchaId('');
+      setCaptchaPrompt('');
+    } finally {
+      if (clearAnswer) setCaptchaAnswer('');
+      setCaptchaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCaptcha(true);
+  }, []);
+
   // Countdown when locked out
   useEffect(() => {
     if (lockoutSecondsLeft == null || lockoutSecondsLeft <= 0) return;
@@ -84,6 +146,25 @@ export function Login({
     setHasCredentialError(false);
     setRemainingAttempts(null);
   };
+
+  const parsedCaptcha = parseMathCaptcha(captchaPrompt);
+  const expectedCaptchaValue = parsedCaptcha
+    ? Number(parsedCaptcha.left) + (parsedCaptcha.operator === '-' ? -Number(parsedCaptcha.right) : Number(parsedCaptcha.right))
+    : null;
+  const normalizedCaptchaAnswer = captchaAnswer.trim();
+  const isCaptchaEmpty = !captchaLoading && normalizedCaptchaAnswer.length === 0;
+  const isCaptchaCorrect =
+    !captchaLoading &&
+    normalizedCaptchaAnswer.length > 0 &&
+    expectedCaptchaValue != null &&
+    Number(normalizedCaptchaAnswer) === expectedCaptchaValue;
+  const isCaptchaIncorrect =
+    !captchaLoading &&
+    normalizedCaptchaAnswer.length > 0 &&
+    expectedCaptchaValue != null &&
+    Number(normalizedCaptchaAnswer) !== expectedCaptchaValue;
+  const emailAtLimit = email.length >= 64;
+  const passwordAtLimit = password.length >= 64;
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,16 +258,34 @@ export function Login({
       setError('System setup required: no admin account exists yet.');
       return;
     }
+    if (!captchaId || !captchaPrompt) {
+      setError('CAPTCHA is not ready. Please refresh and try again.');
+      return;
+    }
+    if (!captchaAnswer.trim()) {
+      setError('Please answer the CAPTCHA first.');
+      return;
+    }
     if (lockoutSecondsLeft != null && lockoutSecondsLeft > 0) return;
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          captchaId,
+          captchaAnswer: captchaAnswer.trim(),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        await loadCaptcha(true);
+        if (res.status === 400 && data.code === 'CAPTCHA_REQUIRED') {
+          setIsLoading(false);
+          return;
+        }
         if (res.status === 403 && data.unverified) {
           onNavigateToVerify?.(email);
           return;
@@ -213,9 +312,9 @@ export function Login({
       setHasCredentialError(false);
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email?.split('@')[0] || 'User';
       const user = { id: String(data._id), email: data.email, name, role: (data.role === 'staff' ? 'staff' : 'guest') as 'guest' | 'staff' };
-      localStorage.setItem('aurora_user', JSON.stringify(user));
-      if (data.token) localStorage.setItem('aurora_token', data.token);
-      if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
+      setAuthItem('aurora_user', JSON.stringify(user));
+      if (data.token) setAuthItem('aurora_token', data.token);
+      if (data.refreshToken) setAuthItem('aurora_refresh_token', data.refreshToken);
       onLogin(user);
     } catch {
       setHasCredentialError(true);
@@ -252,12 +351,17 @@ export function Login({
             <input
               type="email"
               required
+              maxLength={64}
               value={email}
-              onChange={(e) => { setEmail(e.target.value); clearErrors(); }}
+              onKeyDown={preventSpaceKey}
+              onChange={(e) => { setEmail(e.target.value.replace(/\s/g, '').slice(0, 64)); clearErrors(); }}
               placeholder="you@gmail.com"
               style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-none"
             />
+            {emailAtLimit && (
+              <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 64 characters.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Password</label>
@@ -265,12 +369,17 @@ export function Login({
               <input
                 type={showPassword ? "text" : "password"}
                 required
+                maxLength={64}
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); clearErrors(); }}
+                onKeyDown={preventSpaceKey}
+                onChange={(e) => { setPassword(e.target.value.replace(/\s/g, '').slice(0, 64)); clearErrors(); }}
                 placeholder="••••••••"
                 style={hasCredentialError ? { borderColor: '#f87171' } : undefined}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
+              {passwordAtLimit && (
+                <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 64 characters.</p>
+              )}
               <button
                 type="button"
                 tabIndex={0}
@@ -279,7 +388,7 @@ export function Login({
                 className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#D4AF37]/50 transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-5 h-5 shrink-0" /> : <Eye className="w-5 h-5 shrink-0" />}
+                {showPassword ? <Eye className="w-5 h-5 shrink-0" /> : <EyeOff className="w-5 h-5 shrink-0" />}
               </button>
             </div>
             <div className="flex justify-end mt-2">
@@ -305,6 +414,65 @@ export function Login({
                   </p>
                 )}
               </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-[#0A2342]/15 dark:border-[#F9F7F2]/20 bg-[#F9F7F2] dark:bg-[#05152a] p-4">
+            <div className="flex items-center gap-3 flex-nowrap">
+              <div className="h-12 min-w-[62px] shrink-0 rounded-md border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] px-3 flex items-center justify-center text-2xl font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+                {captchaLoading ? '...' : (parsedCaptcha?.left || '?')}
+              </div>
+              <span className="text-2xl text-[#0A2342]/70 dark:text-[#F9F7F2]/70">{parsedCaptcha?.operator || '+'}</span>
+              <div className="h-12 min-w-[62px] shrink-0 rounded-md border border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] px-3 flex items-center justify-center text-2xl font-semibold text-[#0A2342] dark:text-[#F9F7F2]">
+                {captchaLoading ? '...' : (parsedCaptcha?.right || '?')}
+              </div>
+              <span className="text-2xl text-[#0A2342]/70 dark:text-[#F9F7F2]/70">=</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={3}
+                value={captchaAnswer}
+                onChange={(e) => { setCaptchaAnswer(e.target.value.replace(/\D/g, '').slice(0, 3)); clearErrors(); }}
+                placeholder="?"
+                aria-label="Captcha answer"
+                style={{
+                  width: '76px',
+                  minWidth: '76px',
+                  maxWidth: '76px',
+                  borderColor: isCaptchaCorrect ? '#22c55e' : (isCaptchaIncorrect ? '#ef4444' : undefined),
+                  color: isCaptchaCorrect ? '#22c55e' : (isCaptchaIncorrect ? '#ef4444' : undefined),
+                }}
+                className={`h-12 shrink-0 rounded-md border px-3 text-center text-xl focus:outline-none focus:ring-2 ${
+                  isCaptchaCorrect
+                    ? 'bg-white dark:bg-[#0A2342] focus:ring-emerald-500/40'
+                    : isCaptchaIncorrect
+                      ? 'bg-white dark:bg-[#0A2342] focus:ring-red-500/40'
+                      : 'border-[#0A2342]/20 dark:border-[#F9F7F2]/20 bg-white dark:bg-[#0A2342] text-[#0A2342] dark:text-[#F9F7F2] focus:ring-[#D4AF37]/50'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => loadCaptcha(true)}
+                disabled={captchaLoading}
+                className="h-12 w-12 shrink-0 inline-flex items-center justify-center rounded-md text-[#0A2342]/60 dark:text-[#F9F7F2]/70 hover:text-[#D4AF37] hover:bg-[#0A2342]/5 dark:hover:bg-[#F9F7F2]/10 disabled:opacity-60"
+                aria-label="Refresh captcha"
+                title="Refresh captcha"
+              >
+                <RefreshCw className={`w-5 h-5 ${captchaLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            {!captchaLoading && !parsedCaptcha && captchaPrompt && (
+              <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mt-2">{captchaPrompt}</p>
+            )}
+            {isCaptchaEmpty && (
+              <p className="text-xs mt-2" style={{ color: '#ef4444' }}>Required field cannot be left blank</p>
+            )}
+            {isCaptchaIncorrect && (
+              <p className="text-xs mt-2" style={{ color: '#ef4444' }}>Please fill correct value</p>
+            )}
+            {captchaError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-2">{captchaError}</p>
             )}
           </div>
 
@@ -372,6 +540,7 @@ export function Login({
                     type="email"
                     required
                     value={forgotEmail}
+                    onKeyDown={preventSpaceKey}
                     onChange={(e) => { setForgotEmail(e.target.value); setForgotError(''); }}
                     placeholder="you@gmail.com"
                     className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] rounded-lg"
@@ -418,6 +587,7 @@ export function Login({
                     required
                     minLength={8}
                     value={newPassword}
+                    onKeyDown={preventSpaceKey}
                     onChange={(e) => { setNewPassword(e.target.value); setForgotError(''); }}
                     placeholder="••••••••"
                     className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] rounded-lg"
@@ -431,6 +601,7 @@ export function Login({
                     required
                     minLength={8}
                     value={confirmPassword}
+                    onKeyDown={preventSpaceKey}
                     onChange={(e) => { setConfirmPassword(e.target.value); setForgotError(''); }}
                     placeholder="••••••••"
                     className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] rounded-lg"

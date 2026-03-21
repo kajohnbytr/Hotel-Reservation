@@ -27,13 +27,9 @@ Create a new user.
 
 ```json
 {
-  "_id": "ObjectId",
-  "firstName": "string",
-  "lastName": "string",
+  "message": "Registration successful. ...",
   "email": "string",
-  "token": "JWT access token",
-  "refreshToken": "JWT refresh token",
-  "expiresIn": 3600
+  "requiresEmailVerification": true
 }
 ```
 
@@ -55,6 +51,19 @@ Log in with email and password.
 ```
 
 **Success (200):** Same shape as register (includes `token`, `refreshToken`, `expiresIn`).
+
+```json
+{
+  "_id": "ObjectId",
+  "firstName": "string",
+  "lastName": "string",
+  "email": "string",
+  "role": "guest|staff|admin",
+  "token": "JWT access token",
+  "refreshToken": "JWT refresh token",
+  "expiresIn": 900
+}
+```
 
 **Errors:** 400 (validation), 401 (invalid credentials), 429 (rate limit), 500.
 
@@ -100,7 +109,7 @@ Issue a new access token using a valid refresh token. Use when the access token 
 ```json
 {
   "token": "new JWT access token",
-  "expiresIn": 3600
+  "expiresIn": 900
 }
 ```
 
@@ -207,5 +216,5 @@ When exceeded, responses are **429** with body `{ "message": "Too many requests.
 
 ## Token expiry
 
-- **Access token:** 1 hour. Use for `Authorization: Bearer <token>` on protected routes.
+- **Access token:** 15 minutes. Use for `Authorization: Bearer <token>` on protected routes.
 - **Refresh token:** 7 days. Use with `POST /api/users/refresh` to get a new access token without re-login.

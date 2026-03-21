@@ -161,3 +161,29 @@ Use this short summary format when reporting evaluation runs:
 - Weighted final scores
 - Chosen production model and backup
 - Known risks and next validation date
+
+## Implemented Evaluation Workflow
+
+The repository now includes a reproducible benchmark runner:
+
+- Script: `ai/evaluate_ai.py`
+- Output report: `docs/AI_BENCHMARK_RESULTS.md`
+
+Run it with:
+
+```bash
+cd ai
+python evaluate_ai.py
+```
+
+What it currently measures:
+
+- Chat intent recall proxy and latency from the project dataset
+- Recommendation capacity/budget compliance
+- Behavioral test pass rate using structured normal and edge prompts
+- Weighted final score based on this matrix's formula
+
+Defense recommendation:
+
+- Include the generated `docs/AI_BENCHMARK_RESULTS.md` in the appendix.
+- Keep one screenshot/log of each benchmark run date to prove repeatability.

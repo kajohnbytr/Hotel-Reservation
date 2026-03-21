@@ -14,18 +14,25 @@ const handleValidation = (req, res, next) => {
 
 const noNumbers = (field) =>
   body(field).not().matches(/\d/).withMessage(`${field === 'firstName' ? 'First name' : 'Last name'} cannot contain numbers`);
+const noWhitespace = (field, label) =>
+  body(field).not().matches(/\s/).withMessage(`${label} cannot contain spaces`);
 
 export const registerValidation = [
-  body('firstName').trim().notEmpty().withMessage('First name is required'),
+  body('firstName').trim().notEmpty().withMessage('First name is required').isLength({ max: 32 }).withMessage('First name must be at most 32 characters'),
   noNumbers('firstName'),
-  body('lastName').trim().notEmpty().withMessage('Last name is required'),
+  noWhitespace('firstName', 'First name'),
+  body('lastName').trim().notEmpty().withMessage('Last name is required').isLength({ max: 32 }).withMessage('Last name must be at most 32 characters'),
   noNumbers('lastName'),
+  noWhitespace('lastName', 'Last name'),
   body('email')
     .trim()
     .notEmpty().withMessage('Email is required')
+    .isLength({ max: 64 }).withMessage('Email must be at most 64 characters')
     .isEmail().withMessage('Invalid email format')
     .normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
+  noWhitespace('email', 'Email'),
+  body('password').notEmpty().withMessage('Password is required').isLength({ max: 64 }).withMessage('Password must be at most 64 characters'),
+  noWhitespace('password', 'Password'),
   handleValidation,
   (req, res, next) => {
     const email = req.body.email;
@@ -49,9 +56,12 @@ export const loginValidation = [
   body('email')
     .trim()
     .notEmpty().withMessage('Email is required')
+    .isLength({ max: 64 }).withMessage('Email must be at most 64 characters')
     .isEmail().withMessage('Invalid email format')
     .normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
+  noWhitespace('email', 'Email'),
+  body('password').notEmpty().withMessage('Password is required').isLength({ max: 64 }).withMessage('Password must be at most 64 characters'),
+  noWhitespace('password', 'Password'),
   handleValidation,
 ];
 

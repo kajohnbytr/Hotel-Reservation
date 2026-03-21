@@ -9,11 +9,12 @@ interface LandingProps {
   rooms: Room[];
   onBook: (roomId: string) => void;
   onViewAllRooms: () => void;
+  viewerRole?: 'guest' | 'staff' | 'admin';
   onNavigateToStaffLogin?: () => void;
   onNavigateToReception?: () => void;
 }
 
-export function Landing({ rooms, onBook, onViewAllRooms, onNavigateToStaffLogin, onNavigateToReception }: LandingProps) {
+export function Landing({ rooms, onBook, onViewAllRooms, viewerRole, onNavigateToStaffLogin, onNavigateToReception }: LandingProps) {
   return (
     <div className="pb-20">
       <div className="relative h-[85vh] flex items-center justify-center overflow-hidden">
@@ -65,7 +66,12 @@ export function Landing({ rooms, onBook, onViewAllRooms, onNavigateToStaffLogin,
         </div>
         <div className="grid md:grid-cols-3 gap-8">
           {rooms.map(room => (
-            <RoomCard key={room.id} room={room} onBook={onBook} />
+            <RoomCard
+              key={room.id}
+              room={room}
+              onBook={onBook}
+              detailsOnly={viewerRole === 'staff' || viewerRole === 'admin'}
+            />
           ))}
         </div>
       </div>

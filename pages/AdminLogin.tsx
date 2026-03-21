@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Logo } from '../components/Logo';
+import { getApiBaseUrl } from '../lib/api';
+import { setAuthItem } from '../lib/authSession';
 import { useTheme } from '../lib/theme';
 import { Sun, Moon } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 interface AdminLoginProps {
   onLogin: (user: any) => void;
@@ -48,9 +50,9 @@ export function AdminLogin({ onLogin, onNavigateToHome, onNavigate }: AdminLogin
         data.email?.split('@')[0] ||
         'Admin';
       const user = { id: String(data._id), email: data.email, name, role: 'admin' as const };
-      localStorage.setItem('aurora_user', JSON.stringify(user));
-      if (data.token) localStorage.setItem('aurora_token', data.token);
-      if (data.refreshToken) localStorage.setItem('aurora_refresh_token', data.refreshToken);
+      setAuthItem('aurora_user', JSON.stringify(user));
+      if (data.token) setAuthItem('aurora_token', data.token);
+      if (data.refreshToken) setAuthItem('aurora_refresh_token', data.refreshToken);
       onLogin(user);
     } catch {
       setError('Could not sign in. Try again.');

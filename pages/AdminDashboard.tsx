@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getApiBaseUrl } from '../lib/api';
+import { getAuthItem } from '../lib/authSession';
 import { Room } from '../lib/store';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
+const MAX_GUESTS_LIMIT = 20;
+const MAX_PRICE_PER_NIGHT = 50000;
 
 interface Reservation {
   id: string;
@@ -60,16 +64,9 @@ function getRelativeTime(isoString: string | undefined): string | null {
 }
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
-  admin_login: 'Admin login',
-  staff_login: 'Staff login',
-  guest_login: 'Guest login',
-  signup: 'Sign up',
-  guest_booking: 'Made reservation',
-  staff_viewed_reservations: 'Viewed reservations',
-  staff_viewed_availability: 'Viewed availability',
-  dashboard_view: 'Opened dashboard',
-  tab_view: 'Viewed tab',
-  room_added: 'Room added',
+  guest_booking: 'Reservation created',
+  booking_cancel_request: 'Cancellation requested',
+  booking_cancelled: 'Reservation cancelled',
 };
 
 function getAuditActionLabel(action: string): string {
@@ -107,7 +104,7 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
   const [creatingStaff, setCreatingStaff] = useState(false);
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('aurora_token') : null;
+  const token = getAuthItem('aurora_token');
 
   const recordAudit = useCallback((action: string, details: string) => {
     if (!token) return;
@@ -125,7 +122,9 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
   useEffect(() => {
     if (!token || activeTab !== 'audit-logs') return;
     setAuditLoading(true);
-    const url = auditRoleFilter ? `${API_BASE}/api/admin/audit?role=${encodeURIComponent(auditRoleFilter)}` : `${API_BASE}/api/admin/audit`;
+    const params = new URLSearchParams({ scope: 'booking' });
+    if (auditRoleFilter) params.set('role', auditRoleFilter);
+    const url = `${API_BASE}/api/admin/audit?${params.toString()}`;
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setAuditLogs(Array.isArray(data) ? data : []))
@@ -284,6 +283,20 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
   const handleSubmitRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
+
+    const parsedPricePerNight = Number(roomForm.pricePerNight);
+    const parsedMaxGuests = roomForm.maxGuests.trim() === '' ? 2 : Number(roomForm.maxGuests);
+
+    if (!Number.isFinite(parsedPricePerNight) || parsedPricePerNight <= 0 || parsedPricePerNight > MAX_PRICE_PER_NIGHT) {
+      toast.error(`Price per night must be greater than 0 and not more than ${MAX_PRICE_PER_NIGHT}.`);
+      return;
+    }
+
+    if (!Number.isInteger(parsedMaxGuests) || parsedMaxGuests < 1 || parsedMaxGuests > MAX_GUESTS_LIMIT) {
+      toast.error(`Max guests must be a whole number between 1 and ${MAX_GUESTS_LIMIT}.`);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/rooms`, {
         method: 'POST',
@@ -294,8 +307,8 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
         body: JSON.stringify({
           name: roomForm.name,
           type: roomForm.type,
-          pricePerNight: Number(roomForm.pricePerNight),
-          maxGuests: Number(roomForm.maxGuests) || 2,
+          pricePerNight: parsedPricePerNight,
+          maxGuests: parsedMaxGuests,
           description: roomForm.description,
           imageUrl: roomForm.imageUrl,
           amenities: roomForm.amenities,
@@ -759,7 +772,7 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
             <div className="px-6 py-4 border-b border-[#0A2342]/10 dark:border-[#F9F7F2]/10 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-serif text-[#0A2342] dark:text-[#F9F7F2]">Audit Logs</h2>
-                <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mt-1">Backtrack guests, staff, and admin actions — dates in local time</p>
+                <p className="text-xs text-[#0A2342]/60 dark:text-[#F9F7F2]/60 mt-1">Booking transactions and confirmations only — dates in local time</p>
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor="audit-role-filter" className="text-xs font-semibold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider">Filter by role</label>
@@ -794,7 +807,7 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                     {auditLogs.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-6 py-12 text-center text-[#0A2342]/60 dark:text-[#F9F7F2]/60 text-sm">
-                          {auditRoleFilter ? `No audit logs for ${auditRoleFilter}. Try "All".` : 'No audit logs yet. Guests (login, signup, bookings), staff (login, view reservations/availability), and admin actions are recorded here.'}
+                          {auditRoleFilter ? `No booking logs for ${auditRoleFilter}. Try "All".` : 'No booking transactions yet.'}
                         </td>
                       </tr>
                     ) : (
@@ -865,6 +878,9 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                   </label>
                   <input
                     type="number"
+                    min={0.01}
+                    max={MAX_PRICE_PER_NIGHT}
+                    step={0.01}
                     className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
                     placeholder="100"
                     value={roomForm.pricePerNight}
@@ -877,6 +893,9 @@ export function AdminDashboard({ rooms, onRoomsUpdated }: AdminDashboardProps) {
                   </label>
                   <input
                     type="number"
+                    min={1}
+                    max={MAX_GUESTS_LIMIT}
+                    step={1}
                     className="w-full bg-[#F9F7F2] dark:bg-[#0A2342] border border-[#0A2342]/15 dark:border-[#F9F7F2]/15 py-3 px-4 rounded-lg text-sm"
                     placeholder="2"
                     value={roomForm.maxGuests}

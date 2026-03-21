@@ -7,7 +7,7 @@ This document describes the security controls implemented in the Aurora Hotel Re
 | Control | Implementation |
 |--------|----------------|
 | **Password storage** | Passwords hashed with **bcrypt** (salt rounds 10) in `backend/models/user.js`. Never stored in plain text. |
-| **Session / tokens** | **JWT** access token (short-lived, 1h) and **refresh token** (7d). Tokens stored client-side; logout clears both. |
+| **Session / tokens** | **JWT** access token (short-lived, 15m) and **refresh token** (7d). Tokens stored client-side; logout clears both. |
 | **Login error handling** | Generic message only: "Invalid email or password" (no user enumeration). |
 | **Brute force protection** | **Rate limiting** on auth routes: 10 requests per 15 minutes per IP for login, register, forgot/reset password (`backend/routes/auth.js`). |
 | **Token validation** | Access token verified on every protected request via `protect` middleware; refresh endpoint re-issues access token using valid refresh token. |
@@ -36,6 +36,7 @@ This document describes the security controls implemented in the Aurora Hotel Re
 | Control | Implementation |
 |--------|----------------|
 | **Security headers** | **Helmet** middleware in `backend/server.js` (e.g. X-Content-Type-Options, X-Frame-Options). |
+| **Content Security Policy (CSP)** | CSP header enabled via Helmet to reduce script/style injection risk while allowing required inline email verification page content. |
 | **Rate limiting** | **express-rate-limit**: global (200 req/15 min per IP) and stricter auth limiter (10 req/15 min per IP for login/register/forgot/reset). |
 | **Body size** | `express.json({ limit: '10kb' })` to limit request body size. |
 
@@ -43,9 +44,9 @@ This document describes the security controls implemented in the Aurora Hotel Re
 
 - **MFA/2FA:** Not implemented. Could be added (e.g. TOTP) for admin or all users.
 - **Vault:** Secrets are in `.env`; for higher assurance, use a secret manager (e.g. HashiCorp Vault, cloud secrets).
-- **Audit logging:** No structured audit log of DB actions; only console error logging. Can be added (e.g. log auth events and failures).
+- **Audit logging:** Structured audit events are implemented for key auth/admin/booking actions. Coverage can be expanded to more DB mutation events.
 - **Backup:** No backup/restore automation in repo; should be handled by MongoDB Atlas or ops.
-- **CSP:** No Content-Security-Policy header; React and static assets. Can be added in production for defense in depth.
+- **Tamper-proof logging:** Logs are stored in MongoDB but not cryptographically chained/signed yet.
 
 ## 6. Reporting security issues
 

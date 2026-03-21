@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { DayPicker } from 'react-day-picker';
 import { Room } from '../lib/store';
+import { getApiBaseUrl } from '../lib/api';
+import { getAuthItem } from '../lib/authSession';
 import { Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import 'react-day-picker/dist/style.css';
 import '../styles/day-picker-dark.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 interface OccupiedRange {
   checkIn: string;
@@ -70,7 +72,7 @@ export function BookingPage({ room, onConfirm, onCancel }: BookingPageProps) {
   }, [room.id]);
 
   useEffect(() => {
-    const token = localStorage.getItem('aurora_token');
+    const token = getAuthItem('aurora_token');
     if (!token) {
       setLimitLoading(false);
       return;

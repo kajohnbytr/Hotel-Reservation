@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Eye, EyeOff } from 'lucide-react';
+import { getApiBaseUrl } from '../lib/api';
 import { validatePassword } from '../lib/passwordPolicy';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = getApiBaseUrl();
 
 // onSignup now receives the registered email so the parent can
 // pass it to <VerifyEmail pendingEmail={email} />
 export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: { onSignup: (email: string) => void; onNavigateToLogin: () => void; onNavigateToStaffLogin?: () => void }) {
+  const preventSpaceKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === ' ') e.preventDefault();
+  };
+
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -55,6 +60,10 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
 
   // Show mismatch error only when user has typed something in confirm field
   const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+  const firstNameAtLimit = firstName.length >= 32;
+  const lastNameAtLimit = lastName.length >= 32;
+  const emailAtLimit = email.length >= 64;
+  const passwordAtLimit = password.length >= 64;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,26 +147,36 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               <input
                 type="text"
                 required
+                maxLength={32}
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value.replace(/\d/g, ''))}
+                onKeyDown={preventSpaceKey}
+                onChange={(e) => setFirstName(e.target.value.replace(/\d/g, '').replace(/\s/g, '').slice(0, 32))}
                 placeholder="First name"
-                pattern="[A-Za-z\s\-']+"
-                title="Letters only (no numbers)"
+                pattern="[A-Za-z\-']+"
+                title="Letters only (no numbers or spaces)"
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
+              {firstNameAtLimit && (
+                <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 32 characters.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-bold text-[#0A2342] dark:text-[#F9F7F2] uppercase tracking-wider mb-2">Last Name</label>
               <input
                 type="text"
                 required
+                maxLength={32}
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value.replace(/\d/g, ''))}
+                onKeyDown={preventSpaceKey}
+                onChange={(e) => setLastName(e.target.value.replace(/\d/g, '').replace(/\s/g, '').slice(0, 32))}
                 placeholder="Last name"
-                pattern="[A-Za-z\s\-']+"
-                title="Letters only (no numbers)"
+                pattern="[A-Za-z\-']+"
+                title="Letters only (no numbers or spaces)"
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
+              {lastNameAtLimit && (
+                <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 32 characters.</p>
+              )}
             </div>
           </div>
           <div>
@@ -165,11 +184,16 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
             <input
               type="email"
               required
+              maxLength={64}
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); }}
+              onKeyDown={preventSpaceKey}
+              onChange={(e) => { setEmail(e.target.value.replace(/\s/g, '').slice(0, 64)); setError(''); }}
               placeholder="you@gmail.com"
               className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
             />
+            {emailAtLimit && (
+              <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 64 characters.</p>
+            )}
           </div>
 
           {/* Password */}
@@ -179,12 +203,17 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               <input
                 type={showPassword ? "text" : "password"}
                 required
+                maxLength={64}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={preventSpaceKey}
+                onChange={(e) => setPassword(e.target.value.replace(/\s/g, '').slice(0, 64))}
                 placeholder="Create a password"
                 minLength={8}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border border-[#0A2342]/10 dark:border-[#F9F7F2]/10 py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none focus:border-[#D4AF37] transition-colors rounded-lg"
               />
+              {passwordAtLimit && (
+                <p className="mt-1.5 text-xs text-[#D4AF37]">Limit reached: maximum 64 characters.</p>
+              )}
               <button
                 type="button"
                 tabIndex={0}
@@ -193,7 +222,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
                 className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#D4AF37]/50 transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-5 h-5 shrink-0" /> : <Eye className="w-5 h-5 shrink-0" />}
+                {showPassword ? <Eye className="w-5 h-5 shrink-0" /> : <EyeOff className="w-5 h-5 shrink-0" />}
               </button>
             </div>
             {password.length > 0 && !validatePassword(password).valid && (
@@ -210,8 +239,10 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
               <input
                 type={showConfirmPassword ? "text" : "password"}
                 required
+                maxLength={64}
                 value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
+                onKeyDown={preventSpaceKey}
+                onChange={(e) => { setConfirmPassword(e.target.value.replace(/\s/g, '').slice(0, 64)); setError(''); }}
                 placeholder="Re-enter your password"
                 minLength={8}
                 className="w-full bg-[#F9F7F2] dark:bg-[#05152a] border py-3 px-4 pr-11 text-[#0A2342] dark:text-[#F9F7F2] focus:outline-none transition-colors rounded-lg"
@@ -231,7 +262,7 @@ export function Signup({ onSignup, onNavigateToLogin, onNavigateToStaffLogin }: 
                 className="text-[#0A2342] dark:text-[#F9F7F2] hover:text-[#D4AF37] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#D4AF37]/50 transition-colors"
                 aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
               >
-                {showConfirmPassword ? <EyeOff className="w-5 h-5 shrink-0" /> : <Eye className="w-5 h-5 shrink-0" />}
+                {showConfirmPassword ? <Eye className="w-5 h-5 shrink-0" /> : <EyeOff className="w-5 h-5 shrink-0" />}
               </button>
             </div>
             {passwordMismatch && (

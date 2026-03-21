@@ -172,6 +172,7 @@ const buildIpMongoUri = async (srvUri) => {
 
 const connectWithRetry = async (attempt = 1) => {
     const uri = process.env.MONGO_URI;
+    const isDevelopment = process.env.NODE_ENV !== "production";
     if (!uri) {
         console.error("Error: MONGO_URI is not set.");
         return;
@@ -203,7 +204,11 @@ const connectWithRetry = async (attempt = 1) => {
                         if (!resolvedIpUriCache) {
                             resolvedIpUriCache = await buildIpMongoUri(uri);
                         }
-                        console.warn("Retrying MongoDB connection using DoH-resolved IPs (TLS hostname check disabled)...");
+                        if (!isDevelopment) {
+                            throw new Error("DoH IP fallback requires tlsAllowInvalidHostnames and is disabled in production");
+                        }
+
+                        console.warn("Retrying MongoDB connection using DoH-resolved IPs (development only, TLS hostname check disabled)...");
                         const conn = await mongoose.connect(resolvedIpUriCache, {
                             serverSelectionTimeoutMS: 10000,
                             tlsAllowInvalidHostnames: true,

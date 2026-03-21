@@ -5,6 +5,7 @@ import User from '../models/user.js';
 import AuditLog from '../models/auditLog.js';
 
 const router = express.Router();
+const BOOKING_AUDIT_ACTIONS = ['guest_booking', 'booking_cancel_request', 'booking_cancelled'];
 
 // Create staff account (admin only)
 router.post('/create-staff', protect, requireAdmin, async (req, res) => {
@@ -29,6 +30,9 @@ router.post('/create-staff', protect, requireAdmin, async (req, res) => {
       email,
       password,
       role: 'staff',
+      isVerified: true,
+      verificationToken: undefined,
+      verificationTokenExpire: undefined,
     });
 
     // Log the action
@@ -84,7 +88,13 @@ router.get('/audit', protect, requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
     const roleFilter = req.query.role; // 'guest' | 'staff' | 'admin'
+    const scope = (req.query.scope || '').toString().trim().toLowerCase();
     const query = roleFilter && ['guest', 'staff', 'admin'].includes(roleFilter) ? { role: roleFilter } : {};
+
+    if (scope === 'booking' || scope === 'transaction') {
+      query.action = { $in: BOOKING_AUDIT_ACTIONS };
+    }
+
     const logs = await AuditLog.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
