@@ -170,5 +170,48 @@ router.get('/user-activity/:userId', protect, requireAdmin, async (req, res) => 
   }
 });
 
+// Delete user (admin only) - can only delete guest or staff, not admin
+router.delete('/users/:userId', protect, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Find the user to delete
+    const userToDelete = await User.findById(userId);
+    if (!userToDelete) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Prevent deleting admin accounts
+    if (userToDelete.role === 'admin') {
+      return res.status(403).json({ message: 'Cannot delete admin accounts' });
+    }
+
+    // Delete the user
+    await User.findByIdAndDelete(userId);
+
+    // Log the action
+    try {
+      const adminName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email;
+      const deletedUserName = [userToDelete.firstName, userToDelete.lastName].filter(Boolean).join(' ') || userToDelete.email;
+      await AuditLog.create({
+        userId: req.user._id,
+        userEmail: req.user.email,
+        userName: adminName,
+        role: 'admin',
+        action: 'admin_deleted_user',
+        details: `Deleted ${userToDelete.role} account for ${deletedUserName} (${userToDelete.email})`,
+      });
+      console.log('[Audit] admin_deleted_user recorded for', req.user.email);
+    } catch (err) {
+      console.error('[Audit] admin_deleted_user:', err.message);
+    }
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 export default router;
 

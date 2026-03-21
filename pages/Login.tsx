@@ -299,9 +299,11 @@ export function Login({
           if (data.lockedUntil && data.retryAfterSeconds) {
             setLockoutSecondsLeft(data.retryAfterSeconds);
             setError(data.message || 'Account temporarily locked. Try again later.');
+            setPassword('');
           } else {
             setHasCredentialError(true);
             setError('Incorrect Email or Password');
+            setPassword('');
           }
         }
         setIsLoading(false);
@@ -394,8 +396,9 @@ export function Login({
             <div className="flex justify-end mt-2">
               <button
                 type="button"
+                disabled={lockoutSecondsLeft != null && lockoutSecondsLeft > 0}
                 onClick={() => { setShowForgotModal(true); setForgotStep(1); setForgotEmail(email); setForgotError(''); setForgotSuccess(''); }}
-                className="text-xs text-[#D4AF37] hover:underline font-medium"
+                className="text-xs text-[#D4AF37] hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Forgot password?
               </button>

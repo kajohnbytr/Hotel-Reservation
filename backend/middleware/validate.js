@@ -29,6 +29,7 @@ export const registerValidation = [
     .notEmpty().withMessage('Email is required')
     .isLength({ max: 64 }).withMessage('Email must be at most 64 characters')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   noWhitespace('email', 'Email'),
   body('password').notEmpty().withMessage('Password is required').isLength({ max: 64 }).withMessage('Password must be at most 64 characters'),
@@ -58,6 +59,7 @@ export const loginValidation = [
     .notEmpty().withMessage('Email is required')
     .isLength({ max: 64 }).withMessage('Email must be at most 64 characters')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   noWhitespace('email', 'Email'),
   body('password').notEmpty().withMessage('Password is required').isLength({ max: 64 }).withMessage('Password must be at most 64 characters'),
@@ -70,6 +72,7 @@ export const forgotPasswordValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   handleValidation,
 ];
@@ -79,9 +82,12 @@ export const resetPasswordValidation = [
     .trim()
     .notEmpty().withMessage('Email is required')
     .isEmail().withMessage('Invalid email format')
+    .matches(/^\S+@\S+\.\S+$/).withMessage('Email cannot contain spaces')
     .normalizeEmail(),
   body('otp').trim().notEmpty().withMessage('OTP is required'),
-  body('newPassword').notEmpty().withMessage('New password is required'),
+  body('newPassword')
+    .notEmpty().withMessage('New password is required')
+    .matches(/^\S+$/).withMessage('Password cannot contain spaces'),
   handleValidation,
   (req, res, next) => {
     const result = validatePassword(req.body.newPassword);

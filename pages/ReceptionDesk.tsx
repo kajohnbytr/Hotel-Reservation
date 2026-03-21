@@ -137,8 +137,14 @@ export function ReceptionDesk({ rooms }: { rooms: Room[] }) {
     fetch(`${API_BASE}/api/bookings/availability?date=${dateStr}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setOccupiedRoomIds(data.occupiedRoomIds || []))
+      .then(async (res): Promise<{ occupiedRoomIds: string[] }> => {
+        if (!res.ok) return { occupiedRoomIds: [] };
+        const data = await res.json().catch(() => ({}));
+        return {
+          occupiedRoomIds: Array.isArray(data?.occupiedRoomIds) ? data.occupiedRoomIds : [],
+        };
+      })
+      .then((data) => setOccupiedRoomIds(data.occupiedRoomIds))
       .catch(() => setOccupiedRoomIds([]));
   }, [token, activeTab, selectedDate]);
 
