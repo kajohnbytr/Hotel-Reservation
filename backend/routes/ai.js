@@ -1186,6 +1186,17 @@ function roomKnowledgeReply(message, knowledge) {
       : `Our most affordable option right now is ${r.name} at PHP ${r.pricePerNight} per night (up to ${r.maxGuests} guests).`;
   }
 
+  const asksMostExpensive = /\b(most expensive|highest price|priciest|premium room|pinakamahal|pinaka mahal|mahal na room|most premium)\b/.test(text);
+  if (asksMostExpensive) {
+    const mostExpensiveRoom = [...rooms].sort((a, b) => Number(b.pricePerNight) - Number(a.pricePerNight))[0];
+    if (mostExpensiveRoom) {
+      const inclusions = formatRoomInclusions(mostExpensiveRoom?.amenities, filipino);
+      return filipino
+        ? `Pinaka-mahal na room namin ngayon ang **${mostExpensiveRoom.name}**.\n- Presyo: PHP ${mostExpensiveRoom.pricePerNight} bawat gabi\n- Kapasidad: Hanggang ${mostExpensiveRoom.maxGuests} guests\n- Inclusions: ${inclusions}`
+        : `Our most expensive room right now is **${mostExpensiveRoom.name}**.\n- Price: PHP ${mostExpensiveRoom.pricePerNight} per night\n- Capacity: Up to ${mostExpensiveRoom.maxGuests} guests\n- Inclusions: ${inclusions}`;
+    }
+  }
+
   const asksBiggest = /\b(largest|biggest|family|group|pinakamalaki|pang pamilya|maraming tao)\b/.test(text);
   if (asksBiggest && knowledge.highestCapacityRoom) {
     const r = knowledge.highestCapacityRoom;

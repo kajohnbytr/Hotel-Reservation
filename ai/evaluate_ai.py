@@ -1,6 +1,5 @@
 import csv
 import json
-import math
 import statistics
 import time
 from pathlib import Path
@@ -30,6 +29,46 @@ BEHAVIORAL_CASES = [
     {"input": "blablah random text", "expected": "fallback"},
 ]
 
+# Map model intent tags to the dataset's evaluation labels.
+TAG_TO_EVAL_LABEL = {
+    "greeting": "greeting",
+    "farewell": "thanks",
+    "wifi": "wifi",
+    "checkin": "policy",
+    "checkout": "policy",
+    "amenities": "amenities",
+    "restaurant": "amenities",
+    "pool": "amenities",
+    "parking": "amenities",
+    "room_types": "rooms",
+    "booking_help": "reservation",
+    "unknown": "unknown",
+}
+
+
+def normalize_eval_label(label):
+    raw = str(label or "").strip().lower()
+    if not raw:
+        return "unknown"
+
+    aliases = {
+        "checkin": "policy",
+        "checkout": "policy",
+        "what room should we get?": "recommendation",
+        "what can i get?": "recommendation",
+        "what room is best": "recommendation",
+        "pool details only": "amenities",
+        "i only care about the pool": "amenities",
+        "keep it on pool": "amenities",
+        "gym or yoga and is there a dine in there?": "amenities",
+        "continue on amenity topic": "amenities",
+    }
+    return aliases.get(raw, raw)
+
+
+def map_tag_to_eval_label(tag):
+    return TAG_TO_EVAL_LABEL.get(str(tag or "").strip().lower(), "unknown")
+
 
 def load_intents():
     with INTENTS_PATH.open("r", encoding="utf-8") as f:
@@ -45,13 +84,36 @@ def load_csv_rows(path):
     return rows[1:]
 
 
-def basic_intent_reply(message, intents):
+def load_chat_samples(path):
+    samples = []
+    with path.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            message = str(row.get("user_message", "") or "").strip()
+            label = normalize_eval_label(row.get("intent", ""))
+            if not message:
+                continue
+            samples.append({"message": message, "label": label})
+    return samples
+
+
+def predict_intent_tag(message, intents):
     text = str(message or "").lower()
     for intent in intents:
         for pattern in intent.get("patterns", []):
             if pattern and pattern.lower() in text:
-                responses = intent.get("responses", [])
-                return responses[0] if responses else None
+                return intent.get("tag", "unknown")
+    return "unknown"
+
+
+def basic_intent_reply(message, intents):
+    tag = predict_intent_tag(message, intents)
+    if tag == "unknown":
+        return None
+    for intent in intents:
+        if intent.get("tag") == tag:
+            responses = intent.get("responses", [])
+            return responses[0] if responses else None
     return None
 
 
@@ -107,6 +169,109 @@ def evaluate_chat_latency_and_recall(intents, chat_rows):
     }
 
 
+def evaluate_intent_classification(intents, chat_samples):
+    total = 0
+    correct = 0
+    labels = set()
+    pairs = []
+
+    for sample in chat_samples:
+        actual = sample["label"]
+        predicted = map_tag_to_eval_label(predict_intent_tag(sample["message"], intents))
+
+        labels.add(actual)
+        labels.add(predicted)
+        pairs.append((actual, predicted))
+
+        total += 1
+        if actual == predicted:
+            correct += 1
+
+    ordered_labels = sorted(labels)
+    index = {label: i for i, label in enumerate(ordered_labels)}
+    matrix = [[0 for _ in ordered_labels] for _ in ordered_labels]
+    support = {label: 0 for label in ordered_labels}
+
+    for actual, predicted in pairs:
+        matrix[index[actual]][index[predicted]] += 1
+        support[actual] += 1
+
+    per_class = []
+    macro_precision_sum = 0.0
+    macro_recall_sum = 0.0
+    macro_f1_sum = 0.0
+    macro_count = 0
+
+    for label in ordered_labels:
+        i = index[label]
+        tp = matrix[i][i]
+        fp = sum(matrix[r][i] for r in range(len(ordered_labels)) if r != i)
+        fn = sum(matrix[i][c] for c in range(len(ordered_labels)) if c != i)
+
+        precision = (tp / (tp + fp)) if (tp + fp) else 0.0
+        recall = (tp / (tp + fn)) if (tp + fn) else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+        per_class.append(
+            {
+                "label": label,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "support": support[label],
+            }
+        )
+
+        if support[label] > 0:
+            macro_precision_sum += precision
+            macro_recall_sum += recall
+            macro_f1_sum += f1
+            macro_count += 1
+
+    accuracy = (correct / total) if total else 0.0
+    macro_precision = (macro_precision_sum / macro_count) if macro_count else 0.0
+    macro_recall = (macro_recall_sum / macro_count) if macro_count else 0.0
+    macro_f1 = (macro_f1_sum / macro_count) if macro_count else 0.0
+
+    return {
+        "total": total,
+        "accuracy": accuracy,
+        "macro_precision": macro_precision,
+        "macro_recall": macro_recall,
+        "macro_f1": macro_f1,
+        "labels": ordered_labels,
+        "matrix": matrix,
+        "per_class": per_class,
+    }
+
+
+def render_confusion_matrix_markdown(labels, matrix):
+    if not labels:
+        return "_No labels available._"
+
+    header = "| Actual / Predicted | " + " | ".join(labels) + " |"
+    divider = "|---|" + "|".join(["---" for _ in labels]) + "|"
+    rows = [header, divider]
+
+    for i, actual in enumerate(labels):
+        counts = " | ".join(str(matrix[i][j]) for j in range(len(labels)))
+        rows.append(f"| {actual} | {counts} |")
+
+    return "\n".join(rows)
+
+
+def render_per_class_table(per_class):
+    lines = [
+        "| Label | Precision | Recall | F1 | Support |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for row in per_class:
+        lines.append(
+            f"| {row['label']} | {row['precision']:.2%} | {row['recall']:.2%} | {row['f1']:.2%} | {row['support']} |"
+        )
+    return "\n".join(lines)
+
+
 def evaluate_recommendation_constraints(room_rows):
     checked = 0
     compliant = 0
@@ -155,7 +320,7 @@ def evaluate_behavioral(intents):
     return {"passed": passed, "total": total, "rate": (passed / total) if total else 0.0}
 
 
-def render_report(chat_metrics, rec_metrics, behavioral_metrics):
+def render_report(chat_metrics, classification_metrics, rec_metrics, behavioral_metrics):
     quality = 100.0 * ((chat_metrics["recall"] + rec_metrics["compliance"] + behavioral_metrics["rate"]) / 3.0)
     completion = 100.0 * ((chat_metrics["recall"] + behavioral_metrics["rate"]) / 2.0)
 
@@ -170,19 +335,21 @@ def render_report(chat_metrics, rec_metrics, behavioral_metrics):
 
     today = time.strftime("%Y-%m-%d")
 
-    return f"""# AI Benchmark Results\n\nDate: {today}\nEvaluator: ai/evaluate_ai.py\n\n## Chat Metrics\n\n- Dataset prompts tested: {chat_metrics['total']}\n- Intent recall proxy: {chat_metrics['recall']:.2%} ({chat_metrics['hits']}/{chat_metrics['total']})\n- Average latency: {chat_metrics['avg_ms']:.2f} ms\n- P95 latency: {chat_metrics['p95_ms']:.2f} ms\n\n## Recommendation Metrics\n\n- Cases evaluated: {rec_metrics['checked']}\n- Constraint compliance (capacity/budget): {rec_metrics['compliance']:.2%} ({rec_metrics['compliant']}/{rec_metrics['checked']})\n\n## Behavioral Tests\n\n- Cases passed: {behavioral_metrics['passed']}/{behavioral_metrics['total']}\n- Pass rate: {behavioral_metrics['rate']:.2%}\n\n## Weighted Decision Score\n\nUsing weights from docs/AI_EVALUATION_MATRIX.md:\n\n- Quality: {quality:.2f}\n- Completion: {completion:.2f}\n- Latency: {latency_score:.2f}\n- Reliability: {reliability:.2f}\n- Cost: {cost:.2f}\n\nFinal score = 0.35*Quality + 0.25*Completion + 0.15*Latency + 0.15*Reliability + 0.10*Cost\n\nFinal score: {final_score:.2f}/100\n\n## Notes\n\n- This benchmark is deterministic and lightweight for class defense reproducibility.\n- For final defense, attach sample transcripts and confusion examples alongside this report.\n"""
+    return f"""# AI Benchmark Results\n\nDate: {today}\nEvaluator: ai/evaluate_ai.py\n\n## Chat Metrics\n\n- Dataset prompts tested: {chat_metrics['total']}\n- Intent recall proxy: {chat_metrics['recall']:.2%} ({chat_metrics['hits']}/{chat_metrics['total']})\n- Average latency: {chat_metrics['avg_ms']:.2f} ms\n- P95 latency: {chat_metrics['p95_ms']:.2f} ms\n\n## Intent Classification Metrics (Label-Normalized)\n\n- Samples evaluated: {classification_metrics['total']}\n- Accuracy: {classification_metrics['accuracy']:.2%}\n- Macro precision: {classification_metrics['macro_precision']:.2%}\n- Macro recall: {classification_metrics['macro_recall']:.2%}\n- Macro F1: {classification_metrics['macro_f1']:.2%}\n\n### Per-Class Metrics\n\n{render_per_class_table(classification_metrics['per_class'])}\n\n### Confusion Matrix\n\n{render_confusion_matrix_markdown(classification_metrics['labels'], classification_metrics['matrix'])}\n\n## Recommendation Metrics\n\n- Cases evaluated: {rec_metrics['checked']}\n- Constraint compliance (capacity/budget): {rec_metrics['compliance']:.2%} ({rec_metrics['compliant']}/{rec_metrics['checked']})\n\n## Behavioral Tests\n\n- Cases passed: {behavioral_metrics['passed']}/{behavioral_metrics['total']}\n- Pass rate: {behavioral_metrics['rate']:.2%}\n\n## Weighted Decision Score\n\nUsing weights from docs/AI_EVALUATION_MATRIX.md:\n\n- Quality: {quality:.2f}\n- Completion: {completion:.2f}\n- Latency: {latency_score:.2f}\n- Reliability: {reliability:.2f}\n- Cost: {cost:.2f}\n\nFinal score = 0.35*Quality + 0.25*Completion + 0.15*Latency + 0.15*Reliability + 0.10*Cost\n\nFinal score: {final_score:.2f}/100\n\n## Notes\n\n- Classification metrics are label-normalized proxies to compare the intent matcher against the dataset taxonomy.\n- This benchmark is deterministic and lightweight for class defense reproducibility.\n- For final defense, attach sample transcripts and confusion examples alongside this report.\n"""
 
 
 def main():
     intents = load_intents()
     chat_rows = load_csv_rows(CHAT_DATASET_PATH)
+    chat_samples = load_chat_samples(CHAT_DATASET_PATH)
     room_rows = load_csv_rows(ROOM_DATASET_PATH)
 
     chat_metrics = evaluate_chat_latency_and_recall(intents, chat_rows)
+    classification_metrics = evaluate_intent_classification(intents, chat_samples)
     rec_metrics = evaluate_recommendation_constraints(room_rows)
     behavioral_metrics = evaluate_behavioral(intents)
 
-    report = render_report(chat_metrics, rec_metrics, behavioral_metrics)
+    report = render_report(chat_metrics, classification_metrics, rec_metrics, behavioral_metrics)
     OUTPUT_PATH.write_text(report, encoding="utf-8")
     print(f"Benchmark report written to: {OUTPUT_PATH}")
 

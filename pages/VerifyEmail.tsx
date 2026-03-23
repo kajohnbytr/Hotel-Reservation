@@ -290,7 +290,7 @@ function ResendButton({
       disabled={status === 'sending' || disabled}
       className="w-full bg-[#0A2342] hover:bg-[#153a66] dark:bg-[#F9F7F2] dark:text-[#0A2342] dark:hover:bg-[#D4AF37] text-[#F9F7F2] font-bold py-4 transition-colors disabled:opacity-60 uppercase tracking-widest text-xs rounded-lg"
     >
-      {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Email Sent ✓' : hasCooldown ? `Resend in ${cooldown}s` : baseLabel}
+      {status === 'sending' ? 'Sending…' : hasCooldown ? `Resend in ${cooldown}s` : status === 'sent' ? 'Email Sent ✓' : baseLabel}
     </button>
   );
 }

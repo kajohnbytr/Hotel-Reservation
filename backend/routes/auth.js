@@ -523,23 +523,6 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
 
-    try {
-      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
-      const role = (user.role === 'admin' || user.role === 'staff') ? user.role : 'guest';
-      const action = role === 'admin' ? 'admin_login' : role === 'staff' ? 'staff_login' : 'guest_login';
-      await AuditLog.create({
-        userId: user._id,
-        userEmail,
-        userName,
-        role,
-        action,
-        details: `${role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Guest'} logged in`,
-      });
-    } catch (err) {
-      console.error('[Audit] Failed to record login:', err.message, err);
-    }
-
     res.status(200).json({
       _id: user._id,
       firstName: user.firstName,
@@ -596,23 +579,6 @@ router.post('/staff-login', authLimiter, loginValidation, async (req, res) => {
 
     const token = generateToken(user._id, ACCESS_TOKEN_EXPIRY);
     const refreshToken = generateToken(user._id, REFRESH_TOKEN_EXPIRY);
-
-    try {
-      const userEmail = (user.email && String(user.email).trim()) || 'unknown';
-      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || userEmail;
-      const role = user.role === 'admin' ? 'admin' : 'staff';
-      const action = role === 'admin' ? 'admin_login' : 'staff_login';
-      await AuditLog.create({
-        userId: user._id,
-        userEmail,
-        userName,
-        role,
-        action,
-        details: `${role === 'admin' ? 'Admin' : 'Staff'} logged in`,
-      });
-    } catch (err) {
-      console.error('[Audit] Failed to record staff login:', err.message, err);
-    }
 
     return res.status(200).json({
       _id: user._id,
@@ -716,7 +682,7 @@ router.post('/forgot-password', authLimiter, forgotPasswordValidation, async (re
 router.post('/reset-password', authLimiter, resetPasswordValidation, async (req, res) => {
   const { email, otp, newPassword } = req.body;
   try {
-    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex');
+    const hashedOTP = crypto.createHash('sha256').update(otp.trim()).digest('hex');
     const user = await User.findOne({
       email,
       resetPasswordOTP: hashedOTP,

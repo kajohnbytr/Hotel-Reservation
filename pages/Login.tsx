@@ -223,7 +223,7 @@ export function Login({
       const res = await fetch(`${API_BASE}/api/users/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail.trim(), otp, newPassword }),
+        body: JSON.stringify({ email: forgotEmail.trim(), otp: otp.trim(), newPassword }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
